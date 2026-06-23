@@ -1,0 +1,6 @@
+experiment,case,concepts,events,k,conditioning_tests,precision,recall,f1,runtime_sec,rss_peak_mb,rss_delta_mb,status,reason,memory_estimate_mb,distractors,projected_runtime_sec
+distractor,+50,59,4000,3,52893854,not_run,not_run,not_run,not_run,not_run,not_run,projected_only,conditioning_tests_exceed_limit,5.481285095214844,50,12738.245263622475
+distractor,+100,109,4000,3,1202297904,not_run,not_run,not_run,not_run,not_run,not_run,projected_only,conditioning_tests_exceed_limit,10.251182556152344,100,289545.27649074746
+distractor,+250,259,4000,3,94530210054,not_run,not_run,not_run,not_run,not_run,not_run,projected_only,conditioning_tests_exceed_limit,25.247520446777344,250,22765385.946155544
+distractor,+500,509,4000,3,2808229480304,not_run,not_run,not_run,not_run,not_run,not_run,projected_only,conditioning_tests_exceed_limit,52.530235290527344,500,676296264.5272063
+distractor,+1000,1009,4000,3,86548791458304,not_run,not_run,not_run,not_run,not_run,not_run,projected_only,conditioning_tests_exceed_limit,115.6787338256836,1000,20843248307.56311
