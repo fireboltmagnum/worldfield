@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 experiment,case,confounders,concepts,events,k,conditioning_tests,precision,recall,f1,runtime_sec,rss_peak_mb,status
 conditioning_explosion,1_confounders,1,5,4000,1,40,1.0,1.0,1.0,0.005238141600784729,191.9375,exact
 conditioning_explosion,2_confounders,2,6,4000,2,165,1.0,1.0,1.0,0.037993316600477556,191.9375,exact
@@ -7,3 +8,14 @@ conditioning_explosion,5_confounders,5,9,4000,5,4320,1.0,1.0,1.0,2.3153639827996
 conditioning_explosion,6_confounders,6,10,4000,6,11115,1.0,1.0,1.0,8.34812023359991,191.9375,exact
 conditioning_explosion,7_confounders,7,11,4000,7,27610,1.0,0.96,0.9793103448275863,28.05568745820019,191.9375,exact
 conditioning_explosion,8_confounders,8,12,4000,8,66858,1.0,0.9058823529411765,0.9479178885630498,88.97331532460012,191.9375,exact
+=======
+experiment,case,confounders,concepts,events,k,conditioning_tests,precision,recall,f1,runtime_sec,rss_peak_mb,status
+conditioning_explosion,1_confounders,1,5,4000,1,40,1.0,1.0,1.0,0.005238141600784729,191.9375,exact
+conditioning_explosion,2_confounders,2,6,4000,2,165,1.0,1.0,1.0,0.037993316600477556,191.9375,exact
+conditioning_explosion,3_confounders,3,7,4000,3,546,1.0,1.0,1.0,0.15034504960021877,191.9375,exact
+conditioning_explosion,4_confounders,4,8,4000,4,1596,1.0,1.0,1.0,0.6177076333999139,191.9375,exact
+conditioning_explosion,5_confounders,5,9,4000,5,4320,1.0,1.0,1.0,2.3153639827996813,191.9375,exact
+conditioning_explosion,6_confounders,6,10,4000,6,11115,1.0,1.0,1.0,8.34812023359991,191.9375,exact
+conditioning_explosion,7_confounders,7,11,4000,7,27610,1.0,0.96,0.9793103448275863,28.05568745820019,191.9375,exact
+conditioning_explosion,8_confounders,8,12,4000,8,66858,1.0,0.9058823529411765,0.9479178885630498,88.97331532460012,191.9375,exact
+>>>>>>> 8b9fa233473fb2f2ff34bd1a43274825a7b0eaf0

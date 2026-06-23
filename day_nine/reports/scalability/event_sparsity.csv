@@ -1,6 +1,15 @@
+<<<<<<< HEAD
 experiment,case,concepts,events,k,conditioning_tests,precision,recall,f1,runtime_sec,rss_peak_mb,status
 event_sparsity,distractor_rate_0.001,30,4000,1,12615,1.0,1.0,1.0,1.7349700125998424,191.9375,exact
 event_sparsity,distractor_rate_0.005,30,4000,1,12615,1.0,1.0,1.0,1.6846061835000001,191.9375,exact
 event_sparsity,distractor_rate_0.01,30,4000,1,12615,1.0,1.0,1.0,1.8864991790998829,191.9375,exact
 event_sparsity,distractor_rate_0.03,30,4000,1,12615,1.0,1.0,1.0,1.716167116699762,191.9375,exact
 event_sparsity,distractor_rate_0.08,30,4000,1,12615,1.0,1.0,1.0,1.744576770999629,191.9375,exact
+=======
+experiment,case,concepts,events,k,conditioning_tests,precision,recall,f1,runtime_sec,rss_peak_mb,status
+event_sparsity,distractor_rate_0.001,30,4000,1,12615,1.0,1.0,1.0,1.7349700125998424,191.9375,exact
+event_sparsity,distractor_rate_0.005,30,4000,1,12615,1.0,1.0,1.0,1.6846061835000001,191.9375,exact
+event_sparsity,distractor_rate_0.01,30,4000,1,12615,1.0,1.0,1.0,1.8864991790998829,191.9375,exact
+event_sparsity,distractor_rate_0.03,30,4000,1,12615,1.0,1.0,1.0,1.716167116699762,191.9375,exact
+event_sparsity,distractor_rate_0.08,30,4000,1,12615,1.0,1.0,1.0,1.744576770999629,191.9375,exact
+>>>>>>> 8b9fa233473fb2f2ff34bd1a43274825a7b0eaf0

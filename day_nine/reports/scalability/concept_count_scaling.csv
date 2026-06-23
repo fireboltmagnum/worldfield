@@ -1,6 +1,15 @@
+<<<<<<< HEAD
 experiment,case,concepts,events,k,conditioning_tests,precision,recall,f1,runtime_sec,rss_peak_mb,rss_delta_mb,status,reason,memory_estimate_mb,projected_runtime_sec
 concept_count,60_concepts,60,4000,3,57645360,not_run,not_run,not_run,not_run,not_run,not_run,projected_only,conditioning_tests_exceed_limit,5.5755615234375,13882.53414073046
 concept_count,120_concepts,120,4000,3,1955917320,not_run,not_run,not_run,not_run,not_run,not_run,projected_only,conditioning_tests_exceed_limit,11.31591796875,471036.85311959236
 concept_count,240_concepts,240,4000,3,64446197040,not_run,not_run,not_run,not_run,not_run,not_run,projected_only,conditioning_tests_exceed_limit,23.291015625,15520356.376437625
 concept_count,480_concepts,480,4000,3,2092612051680,not_run,not_run,not_run,not_run,not_run,not_run,projected_only,conditioning_tests_exceed_limit,49.21875,503956576.0496875
 concept_count,960_concepts,960,4000,3,67453966157760,not_run,not_run,not_run,not_run,not_run,not_run,projected_only,conditioning_tests_exceed_limit,108.984375,16244707086.793808
+=======
+experiment,case,concepts,events,k,conditioning_tests,precision,recall,f1,runtime_sec,rss_peak_mb,rss_delta_mb,status,reason,memory_estimate_mb,projected_runtime_sec
+concept_count,60_concepts,60,4000,3,57645360,not_run,not_run,not_run,not_run,not_run,not_run,projected_only,conditioning_tests_exceed_limit,5.5755615234375,13882.53414073046
+concept_count,120_concepts,120,4000,3,1955917320,not_run,not_run,not_run,not_run,not_run,not_run,projected_only,conditioning_tests_exceed_limit,11.31591796875,471036.85311959236
+concept_count,240_concepts,240,4000,3,64446197040,not_run,not_run,not_run,not_run,not_run,not_run,projected_only,conditioning_tests_exceed_limit,23.291015625,15520356.376437625
+concept_count,480_concepts,480,4000,3,2092612051680,not_run,not_run,not_run,not_run,not_run,not_run,projected_only,conditioning_tests_exceed_limit,49.21875,503956576.0496875
+concept_count,960_concepts,960,4000,3,67453966157760,not_run,not_run,not_run,not_run,not_run,not_run,projected_only,conditioning_tests_exceed_limit,108.984375,16244707086.793808
+>>>>>>> 8b9fa233473fb2f2ff34bd1a43274825a7b0eaf0
