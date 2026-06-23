@@ -23,18 +23,13 @@ import sys
 from itertools import combinations
 
 import numpy as np
-import torch
-
-DAY1 = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "day_one"))
-sys.path.insert(0, DAY1)
-from config_rich import RichConfig  # noqa: E402
-from data import ShapesDataset      # noqa: E402
-from model import Worldfield        # noqa: E402
-
-CKPT = os.path.join(DAY1, "out", "worldfield_rich.pt")
 
 
 def device():
+    try:
+        import torch
+    except ImportError:
+        return "cpu"
     return torch.device("mps" if torch.backends.mps.is_available()
                         else "cuda" if torch.cuda.is_available() else "cpu")
 
@@ -473,8 +468,18 @@ def evaluate_structure(structure, keep, local, seed, n_events=4000, learner="sin
 
 
 def main():
+    import torch
+    import os
+    import sys
+    _d1 = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "day_one"))
+    sys.path.insert(0, _d1)
+    from config_rich import RichConfig
+    from data import ShapesDataset
+    from model import Worldfield
+
     dev = device()
-    ck = torch.load(CKPT, map_location=dev)
+    ckpt = os.path.join(_d1, "out", "worldfield_rich.pt")
+    ck = torch.load(ckpt, map_location=dev)
     cfg = RichConfig()
     model = Worldfield(cfg, ck["vocab_size"]).to(dev)
     model.load_state_dict(ck["model"])
