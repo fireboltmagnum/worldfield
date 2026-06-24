@@ -1,8 +1,12 @@
 """Device selection — no torch import at module level."""
 from __future__ import annotations
 
+import os
+
 
 def pick_device():
+    if os.name == "nt":
+        return "cpu"
     try:
         import torch
     except ModuleNotFoundError:

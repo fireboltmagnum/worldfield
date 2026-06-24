@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "worldfield"
@@ -24,8 +24,10 @@ dependencies = [
     "scikit-learn",
     "torch>=2.0",
     "sentence-transformers",
+    "spacy>=3.0",
     "chromadb>=1.5",
-    "rich",
+    "rich>=13.0",
+    "prompt_toolkit>=3.0",
     "pillow",
 ]
 
@@ -38,7 +40,7 @@ Homepage = "https://github.com/fireboltmagnum/worldfield"
 Repository = "https://github.com/fireboltmagnum/worldfield"
 
 [project.scripts]
-worldfield = "worldfield.__main__:main"
+worldfield = "worldfield.launcher:main"
 
 [tool.setuptools.packages.find]
 include = ["worldfield*"]

@@ -2,19 +2,28 @@
 
 Commands:
   (no args)   Launch interactive CLI
+  --check-deps  Check/install dependencies first
+  reason      Ask a natural language question
   process     Process a single text input
   query       Query without storing
-  benchmark   Run benchmarks
+  stats       Show graph statistics
 """
 from __future__ import annotations
 
 import sys
 
+from .launcher import check_deps
 from .config import Config
 from .core.engine import Engine
+from .reasoning import ReasoningEngine, format_answer
 
 
 def main():
+    # Auto-install dependencies on first run
+    if "--check-deps" in sys.argv:
+        check_deps()
+        sys.argv.remove("--check-deps")
+
     args = sys.argv[1:]
 
     if not args:
@@ -22,8 +31,17 @@ def main():
         run_cli()
         return
 
-    cmd = args[0]
     cfg = Config()
+    cmd = args[0]
+
+    if cmd == "reason":
+        text = " ".join(args[1:])
+        engine = Engine(cfg)
+        reasoner = ReasoningEngine(engine.graph)
+        answer = reasoner.answer(text)
+        print(format_answer(answer))
+        return
+
     engine = Engine(cfg)
 
     if cmd == "process":
@@ -49,23 +67,23 @@ def main():
         for t in traj:
             print(f"  iter {t['iter']}: active={t['active_nodes']} score={t['top_score']:.3f}")
 
-    elif cmd == "benchmark":
-        from .benchmarks.runner import run_benchmarks
-        run_benchmarks(engine, cfg)
+    elif cmd == "stats":
+        g = engine.graph
+        print(f"Concepts: {g.n_concepts}")
+        print(f"Relations: {g.n_relations}")
+        print(f"Avg confidence: {g.avg_confidence:.3f}")
+        if g.n_concepts > 0:
+            print("\nTop concepts:")
+            for name, conf in g.top_concepts(5):
+                print(f"  {name}: {conf:.3f}")
 
     elif cmd == "reset":
         engine.reset()
         print("Engine state reset.")
 
-    elif cmd == "stats":
-        print(f"Fragments: {engine.store.count}")
-        print(f"Active slots: {engine.slots.active_count()}/{cfg.n_slots}")
-        print(f"Graph edges: {engine.graph.n_edges}")
-        print(f"Graph events: {engine.graph.N}")
-
     else:
         print(f"Unknown command: {cmd}")
-        print("Usage: python -m worldfield [process|query|refine|benchmark|stats|reset]")
+        print("Usage: python -m worldfield [reason|process|query|stats|reset]")
 
 
 if __name__ == "__main__":

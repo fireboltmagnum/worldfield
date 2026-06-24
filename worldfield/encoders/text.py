@@ -27,18 +27,24 @@ class TextEncoderProjection(nn.Module):
 
 
 class TextEncoder:
-    """Wraps a SentenceTransformer model + learned projection.
+    """Wraps a SentenceTransformer model + optional learned projection.
+
+    Until the projection is trained via contrastive alignment, encoding
+    returns raw sentence-transformer embeddings (384-dim).  The projection
+    is kept for forward compat but not applied by default.
 
     Usage:
         enc = TextEncoder(latent_dim=128)
-        vec = enc.encode("a red square")       # (128,) float32
-        vecs = enc.encode_batch(["a", "b"])     # (2, 128)
+        vec = enc.encode("a red square")       # (384,) float32
+        vecs = enc.encode_batch(["a", "b"])     # (2, 384)
     """
 
     def __init__(self, latent_dim: int = 128, model_name: str = "all-MiniLM-L6-v2",
-                 device: str | None = None):
+                 device: str | None = None,
+                 use_projection: bool = False):
         self.latent_dim = latent_dim
         self.model_name = model_name
+        self.use_projection = use_projection
 
         from sentence_transformers import SentenceTransformer
         self.st = SentenceTransformer(model_name, device=device or "cpu")
@@ -52,20 +58,25 @@ class TextEncoder:
 
     @property
     def dim(self) -> int:
-        return self.latent_dim
+        if self.use_projection:
+            return self.latent_dim
+        return self.st.get_sentence_embedding_dimension()
 
     @torch.no_grad()
     def encode(self, text: str) -> np.ndarray:
         emb = self.st.encode(text, convert_to_tensor=True, normalize_embeddings=True)
-        emb = emb.unsqueeze(0)
-        latent = self.proj(emb)
-        return latent.squeeze(0).cpu().numpy().astype(np.float32)
+        if self.use_projection:
+            latent = self.proj(emb.unsqueeze(0))
+            return latent.squeeze(0).cpu().numpy().astype(np.float32)
+        return emb.cpu().numpy().astype(np.float32)
 
     @torch.no_grad()
     def encode_batch(self, texts: list[str]) -> np.ndarray:
         embs = self.st.encode(texts, convert_to_tensor=True, normalize_embeddings=True)
-        latent = self.proj(embs)
-        return latent.cpu().numpy().astype(np.float32)
+        if self.use_projection:
+            latent = self.proj(embs)
+            return latent.cpu().numpy().astype(np.float32)
+        return embs.cpu().numpy().astype(np.float32)
 
     def state_dict(self):
         return self.proj.state_dict()

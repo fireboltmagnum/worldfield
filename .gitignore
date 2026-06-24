@@ -1,13 +1,39 @@
-.venv/
+# Python
 __pycache__/
-*.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-day_*/out/
-reports/artifacts/
-test_*.py
+*.pyc
+*.pyo
 *.egg-info/
 dist/
 build/
-.worldfield/
+*.egg
+
+# Data / persistence
+data/
+*.db
+*.sqlite3
+worldfield_state/
+
+# Temp / logs
+*.log
+*.txt
+output.log
+
+# Debug scripts
+check_vectors.py
+debug_*.py
+inspect_graph.py
+run_gqa.py
+test_*.py
+
+# IDE / config
+.vscode/
+.idea/
+.opencode/
+opencode.json
+
+# Superpowers
+docs/superpowers/
+
+# OS
+.DS_Store
+Thumbs.db

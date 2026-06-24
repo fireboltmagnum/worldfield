@@ -35,3 +35,6 @@ class Config:
     # Video encoder
     video_frames: int = 8
     video_sample_rate: str = "uniform"
+
+    # Training
+    temperature: float = 0.07

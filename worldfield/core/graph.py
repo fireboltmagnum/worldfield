@@ -42,7 +42,16 @@ class PMIGraph:
 
     def finalize(self) -> "PMIGraph":
         """Build the PMI-weighted adjacency matrix from accumulated counts."""
+        if not self.ni:
+            self._W = None
+            self._T = None
+            return self
         n_nodes = max(list(self.ni.keys()) + [0]) + 1
+        if n_nodes > 100000:
+            raise RuntimeError(
+                f"PMI graph has {n_nodes} nodes (max ID {n_nodes-1}). "
+                "Use compact sequential IDs instead of large hash values."
+            )
         W = lil_matrix((n_nodes, n_nodes), dtype=np.float32)
 
         for (i, j), cij in self.nij.items():

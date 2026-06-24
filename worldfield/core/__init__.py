@@ -1,7 +1,6 @@
-from .fragments import FragmentStore
+from .world_graph import WorldGraph
 from .slots import SlotMemory
 from .graph import PMIGraph
-from .concepts import ConceptMemory
 from .engine import Engine
 
-__all__ = ["FragmentStore", "SlotMemory", "PMIGraph", "ConceptMemory", "Engine"]
+__all__ = ["WorldGraph", "SlotMemory", "PMIGraph", "Engine"]
