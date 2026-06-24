@@ -6,3 +6,8 @@ __pycache__/
 .ruff_cache/
 day_*/out/
 reports/artifacts/
+test_*.py
+*.egg-info/
+dist/
+build/
+.worldfield/

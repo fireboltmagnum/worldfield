@@ -1,139 +1,122 @@
-# Worldfield — Architecture
+# WorldField — Architecture
 
 A cognitive architecture built on a **single shared latent space**. Every block
 reads and writes the *same* representation; there is no separate symbolic layer.
-This document is the map; [FINDINGS.md](FINDINGS.md) is the experimental evidence
-behind each block.
 
 ## The pipeline
 
 ```
-                          ┌──────────────────────────────┐
+                           ┌──────────────────────────────┐
    image ───►  ┌────────┐ │                              │
-               │ encode │─┤      SHARED LATENT SPACE      │   one space,
-   text  ───►  │  (CLIP-│ │   (L2-normalized vectors,    │   every block
-               │  style)│ │    InfoNCE-contrastive)      │   lives here
-               └────────┘ └──────────────┬───────────────┘
-                  PERCEPTION              │
+                │ encode │─┤      SHARED LATENT SPACE      │   one space,
+   text  ───►  │  (text/ │ │   (128-dim L2-normalized,    │   every block
+                │ image/  │ │    projected to same space)  │   lives here
+   video ───►  │  video) │ │                              │
+                └────────┘ └──────────────┬───────────────┘
+                   PERCEPTION              │
+                                           ▼
+                             ┌──────────────────────────┐
+                             │      FRAGMENT STORE       │   persistent vector
+                             │  (ChromaDB: AI in latent │   DB; every input
+                             │   vectors + metadata)     │   is a fragment
+                             └─────────────┬─────────────┘
+                                           │
+                   ┌───────────────────────┼───────────────────────┐
+                   ▼                       ▼                        ▼
+         ┌───────────────────┐  ┌────────────────────┐  ┌────────────────────┐
+         │    SLOT MEMORY    │  │     RETRIEVAL      │  │ GRAPH WORLD MODEL  │
+         │  K slots, route   │  │  ChromaDB cosine,  │  │ PMI/lift edges     │
+         │  by similarity,   │  │  top-k by score    │  │ over fragment ids  │
+         │  merge / evict    │  │                    │  │ (co-occurrence)    │
+         └─────────┬─────────┘  └─────────┬──────────┘  └─────────┬──────────┘
+                   │                      │                       │
+                   └──────────────────────┼───────────────────────┘
                                           ▼
-                            ┌──────────────────────────┐
-                            │     LATENT FRAGMENTS      │   atomic units of
-                            │  (per-observation vectors │   experience; NOT
-                            │   + label/strength/used)  │   "concepts"
-                            └─────────────┬─────────────┘
-                                          │
-                  ┌───────────────────────┼───────────────────────┐
-                  ▼                       ▼                        ▼
-        ┌───────────────────┐  ┌────────────────────┐  ┌────────────────────┐
-        │    SLOT MEMORY    │  │     RETRIEVAL      │  │ GRAPH WORLD MODEL  │
-        │  K slots, route   │  │  FAISS cosine,     │  │ co-activation edges│
-        │  by similarity,   │  │  top-k + sim-      │  │ over FRAGMENT ids  │
-        │  merge / evict    │  │  threshold rule    │  │ (Hebbian: fire     │
-        │  (no single point)│  │                    │  │  together → wire)  │
-        └─────────┬─────────┘  └─────────┬──────────┘  └─────────┬──────────┘
-                  │  holds many          │ finds                 │ relates
-                  │  concepts at once    │ fragments             │ fragments
-                  └──────────────────────┼───────────────────────┘
-                                         ▼
-                            ┌──────────────────────────┐
-                            │        REASONING          │   seed → propagate
-                            │  spreading activation     │   over edges → read
-                            │  over the fragment graph  │   back associates
-                            └─────────────┬─────────────┘
-                                          ▼
-                            ┌──────────────────────────┐
-                            │       REFINEMENT          │   LOOP with EMA
-                            │  seed→propagate→re-seed→… │   damping; can
-                            │  damped, until converged  │   OVERTURN a wrong
-                            │                           │   lead (not WTA)
-                            └─────────────┬─────────────┘
-                                          ▼
-                            ┌──────────────────────────┐
-                            │     UNCERTAINTY LAYER     │   update-rule choice:
-                            │  hard (max-norm)=attractor│   hard → 100/0
-                            │  soft (sum-norm,diffuse)  │   soft → tracks 60/40
-                            │  = probabilistic reasoner │
-                            └─────────────┬─────────────┘
-                                          ▼
-                                       OUTPUT
-                              (recovered concept(s) +
-                               graded belief, in latent space)
+                             ┌──────────────────────────┐
+                             │      CONCEPT MEMORY       │
+                             │  temporal decay,          │
+                             │  confidence, uncertainty, │
+                             │  hierarchy (parent/child) │
+                             └─────────────┬─────────────┘
+                                           ▼
+                             ┌──────────────────────────┐
+                             │       REASONING           │
+                             │  spreading activation     │
+                             │  over the fragment graph  │
+                             │  (propagate / diffuse)    │
+                             └─────────────┬─────────────┘
+                                           ▼
+                             ┌──────────────────────────┐
+                             │       REFINEMENT          │
+                             │  seed→propagate→re-seed→… │
+                             │  damped, until converged  │
+                             └─────────────┬─────────────┘
+                                           ▼
+                                        OUTPUT
+                               (concept(s), confidence,
+                                uncertainty, graded belief)
 ```
 
-## Blocks, and the experiment that validates each
+## Core blocks
 
-| Block | What it does | Mechanism | Validated by | Status |
-|-------|--------------|-----------|--------------|--------|
-| **Perception** | Encode image & text into one space | Char-level + image encoders, InfoNCE | Day 1 — R@1 ≈ 0.99 | ✅ |
-| **Latent Fragments** | Store per-observation vectors as atomic units | `FragmentStore` (vec + label/strength/last_used) | Day 2 | ✅ |
-| **Retrieval** | Find fragments near a query | FAISS `IndexFlatIP` + top-k + sim-threshold activation | Day 2 — p@10 = 1.000 at 95% distractors | ✅ |
-| **Slot Memory** | Hold *many* concepts persistently | K slots, route by sim, merge ≥ threshold, LRU evict | Day 4 / **Day 4.5** (strict-metric stress) | ✅ |
-| **Graph World Model** | Learn relations between fragments | Hebbian co-activation edges over fragment ids (sparse) | Day 5a (mechanics) / **Day 5b** (real substrate) | ✅ |
-| **Reasoning** | Recover an associate never directly queried | Row-stochastic spreading activation, score in latent space | Day 5b ✅ (clean) / Day 5c ❌ (ambiguous) | ⚠️ |
-| **Refinement** | Self-correct: overturn a wrong lead | Damped (EMA) propagate→re-seed loop, convergence check | Day 6 / **Day 6.5** (scale + contradiction) | ✅ |
-| **Uncertainty Layer** | Represent graded belief, not just a winner | Update-rule switch: max-norm (attractor) vs. sum-norm `diffuse` (probabilistic) | **Day 6.6** | ✅ |
-| **Disambiguation** | Resolve an ambiguous token by context | Context-bridge: seed token + context, propagate, read the steered sense | **Day 7** | ⚠️ context-only |
-| **Graph learning** | Discover edges from raw experience | Hebbian+decay → ❌ frequency; **PMI/lift** → above-chance association (count at concept/cluster granularity) | **Day 8 / 8b / 8c** | ✅ assoc. (stable, ~3–4×); ❌ causal |
+| Block | What it does | Mechanism | Status |
+|-------|--------------|-----------|--------|
+| **Perception** | Encode text, image, video into shared space | SentenceTransformer (text), CNN (image), frame-sampling + CNN (video) | ✅ Text + Image, 🚧 Video |
+| **Fragment Store** | Persistent vector storage | ChromaDB with cosine similarity | ✅ |
+| **Retrieval** | Find fragments near a query | ChromaDB top-k search | ✅ |
+| **Slot Memory** | Hold multiple concepts persistently | K slots, route by sim, merge ≥ threshold, LRU evict | ✅ |
+| **Concept Memory** | Track concepts with confidence, uncertainty, hierarchy | Temporal decay, frequency-based confidence, parent-child structure | ✅ |
+| **Graph World Model** | Learn relations between fragments | PMI/lift edge formation from co-occurrence | ✅ |
+| **Reasoning** | Recover associates via graph | Row-stochastic spreading activation | ✅ |
+| **Refinement** | Self-correct via damped iteration | EMA damping, propagate→re-seed loop | ✅ |
+| **CLI** | Interactive chat + dashboard | rich Layout + prompt_toolkit input | ✅ |
+| **Persistence** | Full state save/load | ChromaDB + JSON for slots/graph/concepts | ✅ |
 
-## Two non-obvious design constraints (learned the hard way)
+## Design constraints
 
-These are the parts that make the architecture *work* and were not obvious up
-front — each was discovered by a failure (see FINDINGS for the breaks).
-
-1. **Concepts are not points; events are not averages.** Slot memory exists
-   because a single state vector collapses many concepts into one (Day 3). The
-   *same* lesson governs edge formation: to wire an event with concepts A and B,
-   activate each separately and wire the **union** — never the averaged query,
-   whose midpoint lands on a *third* concept (Day 5b).
+1. **Concepts are not points; events are not averages.** Slot memory exists because
+   a single state vector collapses many concepts into one. Same rule governs edge
+   formation: wire the union, never the averaged query.
 
 2. **Cognition is a damped dynamical system, not a one-shot function.**
-   Single-shot propagation is inert to noise (Day 5c). The loop needs **EMA
-   damping** to converge instead of oscillate (Day 6). And the *update rule*
-   inside the loop is a first-class design knob: max-normalize forces an
-   attractor; sum-normalize + a mass-preserving `diffuse` step yields a
-   probabilistic reasoner (Day 6.6).
+   Single-shot propagation is inert to noise. The loop needs EMA damping to
+   converge instead of oscillate.
 
-3. **Edges live on fragments, not on latent regions.** Two tokens can be highly
-   similar in latent space yet share *no* learned edges — relations do not
-   transfer by proximity (Day 5b, Day 7). An ambiguous token is resolved by a
-   **context bridge** to a wired sense, not by inheriting its neighbors'
-   relations. Retrieval is regional; the world-model graph is fragment-specific.
+3. **Edges live on fragments, not on latent regions.** Two tokens may be nearby
+   in latent space yet share no learned edges. The world-model graph is
+   fragment-specific.
 
-4. **Count association at the grain the world generates.** Edge *formation* must
+4. **Count association at the grain the world generates.** Edge formation must
    tally co-occurrence at concept/cluster granularity, not raw-fragment
-   granularity (Day 8c). The world generates concept-level relations; a specific
-   fragment-pair almost never recurs, so a support gate over fragment-pairs is a
-   knife-edge artifact. Clustering fragments into concept-like units first
-   (unsupervised, ~0.92 purity) makes the learned graph stable and support-
-   invariant. *Edges live on fragments (constraint 3), but their statistics must
-   be pooled over concept-grain units.*
+   granularity.
 
-## Two distinct propagation operators (do not conflate)
+## New in this version
 
-| Operator | Seed handling | Use | Where |
-|----------|---------------|-----|-------|
-| `propagate` | **zeros the seed** at the end | one-shot *recovery* (find the associate, not the query) | Day 5b/5c/6 |
-| `diffuse` | **keeps seed mass**, accumulates | iterative *uncertainty* passing (a dense distribution must survive) | Day 6.6 |
-
-Unifying these into one rule (with the attractor↔probabilistic behavior as a
-single temperature parameter) is an open frontier item.
+- **Unified `worldfield` package** — pip-installable, all modules under one namespace
+- **Sentence transformer text encoder** — replaces char-RNN with real language understanding
+- **Video encoder** — frame sampling + per-frame CNN + temporal pooling
+- **ChromaDB persistence** — fragments survive across sessions
+- **Concept memory** — temporal decay, confidence tracking, uncertainty, hierarchy
+- **CLI app** — interactive chat with live dashboard (rich TUI)
+- **Continuous learning** — no epochs, each input updates state immediately
 
 ## What is *not* in the architecture yet
 
-- **Causal structure** — the graph learner (Day 8b/8c) captures *above-chance
-  association* robustly, but cannot distinguish a direct relation from two effects
-  of a common cause (confounded edge wired at 0.94× of a real one). Learning *what
-  causes what*, not just *what co-varies*, is the next frontier (Day 9).
-- **Calibrated uncertainty** — soft-mode tracking (Day 6.6) is approximate and
-  tested on one graph/seed; no calibration guarantee.
-- **Unified propagation operator** — `propagate` (zeros seed) and `diffuse`
-  (keeps mass) are two mechanisms; a single temperature-controlled rule would be
-  cleaner.
+- **True causal direction discovery** — graph learns association, not causation
+- **Calibrated uncertainty** — soft-mode tracking is approximate
+- **Automatic hierarchy formation** — parent/child relationships are currently explicit
+- **Real-world image/video generalization** — image encoder trained on synthetic shapes only
 
-**Resolved since the first draft:** automatic graph learning (Day 8b/8c — by
-association, stable across representation granularity) and natural-ambiguity
-disambiguation (Day 7 — by context bridge, with the caveat that the token itself
-does not hold both senses).
+## The continuous loop
 
-See [FINDINGS.md](FINDINGS.md) for the full claim/break/fix/proves log and the
-open-frontier list.
+```
+input → encode → store fragment → track concept → update slots → update graph → retrieve → respond
+```
+
+No batches. No epochs. Every input immediately updates:
+1. Fragment store (adds the vector)
+2. Concept memory (updates confidence/uncertainty/decay)
+3. Slot memory (routes/merges/evicts)
+4. Graph (records co-occurrence for PMI)
+
+State is persisted after each step, so the system resumes exactly where it left off.

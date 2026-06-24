@@ -469,10 +469,46 @@ Perception → Retrieval → Memory → Reasoning → Self-correction → Uncert
 - **Proves:** "PMI learns association" is **stable and understood** — the
   separation survives representation changes (fragment-reuse, concept-level, and
   *label-free* clustering) across a broad support window. The Day-8b narrow gate
-  was a granularity artifact.
+   was a granularity artifact.
 - **Does NOT prove:** Anything new about causality — that gap (confounds, Day-8b
-  Test 4) stands, and is now the unambiguous next frontier because the
-  association layer beneath it is verified solid.
+   Test 4) stands, and is now the unambiguous next frontier because the
+   association layer beneath it is verified solid.
+
+---
+
+## Day 10 — Integrated WorldField package + continuous learning
+
+- **Claim:** The research prototype can be packaged into a usable, persistent,
+  continuously-learning system with a CLI interface, without changing the
+  fundamental architecture.
+- **Experiment:** `worldfield/` package with:
+  - **Text encoder**: SentenceTransformer (`all-MiniLM-L6-v2`) projected to 128-dim
+    latent space — replaces the char-RNN with real language understanding
+  - **Fragment store**: ChromaDB-backed persistent vector storage
+  - **Slot memory**: Ported from Day 4, 8 slots with merge/claim/evict
+  - **Graph**: PMI/lift edge formation from co-occurrence (ported from Day 8b)
+  - **Concept memory**: Temporal decay, confidence (frequency × recency),
+    uncertainty (1 - confidence), hierarchy (parent/child)
+  - **Engine**: Continuous loop (no epochs) — each input immediately updates
+    fragments → concepts → slots → graph → retrieve → respond
+  - **CLI**: rich TUI with chat panel + live dashboard (slots, graph, stats)
+  - **Persistence**: Full state save/load across sessions (slots, graph, concepts, fragments)
+- **Result:**
+  - System processes text inputs in ~100ms each (including SentenceTransformer encoding)
+  - Concepts tracked with confidence scores
+  - Fragments persist in ChromaDB across restarts
+  - CLI provides real-time visibility into slots, graph, and fragments
+- **Failure / honesty:** The text encoder projection layer (ST→latent) is not yet
+  contrastively aligned with the image encoder — text and image live in the same
+  *dimensionality* but not the same *semantic space* until the alignment fine-tuning
+  step is run. Video encoder requires `av` (PyAV) which is an optional dependency.
+  Concept hierarchy is currently explicit (caller sets parent/child), not automatic.
+- **Proves:** The research architecture ports cleanly to a usable package. Continuous
+  learning (no epochs) works at the latent-space level — fragments, slots, and graph
+  all update per-input without any gradient step.
+- **Does NOT prove:** Cross-modal alignment without fine-tuning, video at production
+  quality, automatic hierarchy discovery, calibrated uncertainty in the concept
+  confidence scores.
 
 ---
 

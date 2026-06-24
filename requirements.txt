@@ -1,6 +1,14 @@
-torch>=2.2
+# Core
+torch>=2.0
 numpy
-matplotlib
-faiss-cpu
 scipy
 scikit-learn
+sentence-transformers
+chromadb>=1.5
+rich
+pillow
+
+# Optional
+# av  # for video support
+# matplotlib  # for plots
+# faiss-cpu   # for alternative vector search
