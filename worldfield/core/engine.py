@@ -17,6 +17,7 @@ from .slots import SlotMemory
 from .graph import PMIGraph
 from .world_graph import WorldGraph
 from .activation import ActivationEngine
+from .world_state import WorldStateBuilder
 
 class Engine:
     def __init__(self, config: Config | None = None):
@@ -43,6 +44,9 @@ class Engine:
             spread_factor=self.cfg.activation_spread,
             spread_hops=self.cfg.activation_hops,
         )
+
+        # World state builder (current reality model)
+        self.world_builder = WorldStateBuilder(graph=self.graph)
 
         # Secondary association layer
         self.pmi = PMIGraph(
@@ -154,9 +158,16 @@ class Engine:
         active_concepts = self.activator.get_active(threshold=0.05)
         working_set = self.activator.get_working_set(k=10)
         timings["activation"] = (time.perf_counter() - t_act) * 1000
+        t_ws = time.perf_counter()
+
+        # 4. Build world state (current reality model)
+        world_state = self.world_builder.from_activations(
+            active_concepts, resolved_rel
+        )
+        timings["world_state"] = (time.perf_counter() - t_ws) * 1000
         t2 = time.perf_counter()
 
-        # 4. Record graph state before update
+        # 5. Record graph state before update
         pre_concepts = self.graph.n_concepts
         pre_relations = self.graph.n_relations
 
@@ -218,6 +229,7 @@ class Engine:
             "slot_state_active": self.slots.active_count() if self.slots else 0,
             "activation_active": active_concepts,
             "activation_working_set": working_set,
+            "world_state": world_state.to_dict(),
             "graph_query": related_concepts,
             "total_concepts": self.graph.n_concepts,
             "total_relations": self.graph.n_relations,
@@ -254,6 +266,10 @@ class Engine:
         self.activator.spread()
         active_img = self.activator.get_active(threshold=0.05)
         timings["activation"] = (time.perf_counter() - t2) * 1000
+        t3 = time.perf_counter()
+
+        ws_img = self.world_builder.from_activations(active_img, [])
+        timings["world_state"] = (time.perf_counter() - t3) * 1000
 
         obs_id = self.graph.record_observation(
             text=f"[image] {source}",
@@ -275,6 +291,7 @@ class Engine:
             "graph_query": self.graph.query(name, hops=1) if self.graph.n_concepts > 0 else {},
             "activation_active": active_img,
             "activation_working_set": self.activator.get_working_set(k=10),
+            "world_state": ws_img.to_dict(),
             "slot_concepts": [name],
             "slot_state_active": self.slots.active_count() if self.slots else 0,
             "total_concepts": self.graph.n_concepts,

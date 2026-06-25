@@ -71,25 +71,33 @@ class Turn:
             self.sections.append((header, _render_ansi(Text("\n".join(rows), style="green"))))
 
         # -- WORLD STATE --
-        state_lines = []
-        if concepts:
-            state_lines.append("Objects:")
-            for c in concepts:
-                rel_entries = related.get(c, [])
-                conf = max((e.get("confidence", 0) for e in rel_entries), default=0.0) if rel_entries else 0.0
-                state_lines.append(f"  {c:<16s} confidence: {conf:.2f}")
-            state_lines.append("")
-            state_lines.append("Relations:")
-            for r in rels[:6]:
-                src = r.get("source", "?")
-                pred = r.get("predicate", "?")
-                tgt = r.get("target", "?")
-                conf = r.get("confidence", 0.0)
-                neg = "  (alternative)" if r.get("negated") else ""
-                state_lines.append(f"  {src} -[{pred}]? {tgt}  {conf:.2f}{neg}")
-            t = timings.get("world_update", 0)
+        ws = eng.get("world_state", {})
+        if ws and ws.get("entities"):
+            lines_ws: list[str] = []
+            entities = ws.get("entities", {})
+            rels_ws = ws.get("relations", [])
+            attrs_ws = ws.get("attributes", {})
+            for name, conf in sorted(entities.items(), key=lambda x: -x[1])[:8]:
+                attr_str = ""
+                if name in attrs_ws:
+                    attr_list = [f"{a}={v:.2f}" for a, v in attrs_ws[name].items()]
+                    attr_str = f"  [{', '.join(attr_list[:3])}]"
+                lines_ws.append(f"  {name:<14s} {conf:.2f}{attr_str}")
+            if rels_ws:
+                lines_ws.append("")
+                for r in rels_ws[:6]:
+                    src = r.get("source", "?")
+                    pred = r.get("predicate", "?")
+                    tgt = r.get("target", "?")
+                    conf = r.get("confidence", 0.0)
+                    neg = "  (¬)" if not r.get("polarity", True) else ""
+                    lines_ws.append(f"  {src} -[{pred}]? {tgt}  {conf:.2f}{neg}")
+            if ws.get("n_alternatives", 0) > 0:
+                lines_ws.append("")
+                lines_ws.append(f"  ⚠ {ws['n_alternatives']} competing interpretation(s)")
+            t = timings.get("world_state", 0)
             header = f"WORLD STATE ({t:.0f}ms)" if t else "WORLD STATE"
-            self.sections.append((header, _render_ansi(Text("\n".join(state_lines), style="yellow"))))
+            self.sections.append((header, _render_ansi(Text("\n".join(lines_ws), style="yellow"))))
 
         # -- WORLD MODEL UPDATE --
         pre_c, pre_r = eng.get("graph_pre_state", (0, 0))
