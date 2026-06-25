@@ -1,19 +1,11 @@
-"""CLI output store and section rendering for the cognitive pipeline display."""
+"""CLI output store and section rendering for the cognitive pipeline display.
+
+Plain-text only — no rich, no ANSI formatting. Sections are separated
+with Unicode box-drawing characters for clean terminal output.
+"""
 from __future__ import annotations
 
 from typing import Any
-
-from rich.console import Console
-from rich.text import Text
-from prompt_toolkit.formatted_text import ANSI as PTK_ANSI
-
-_rich_console = Console(color_system="truecolor", force_terminal=True, width=80)
-
-
-def _render_ansi(renderable) -> str:
-    with _rich_console.capture() as cap:
-        _rich_console.print(renderable)
-    return cap.get()
 
 
 class Turn:
@@ -22,7 +14,7 @@ class Turn:
     def __init__(self, user_text: str, engine_result: dict[str, Any]):
         self.user_text = user_text
         self.engine = engine_result
-        self.sections: list[tuple[str, str]] = []  # (section_name, ansi_text)
+        self.sections: list[tuple[str, str]] = []
         self._build()
 
     def _build(self):
@@ -30,7 +22,7 @@ class Turn:
         timings = eng.get("timings", {})
 
         # -- INPUT --
-        self.sections.append(("INPUT", _render_ansi(Text(eng.get("text", ""), style="white"))))
+        self.sections.append(("INPUT", eng.get("text", "")))
 
         # -- UNDERSTANDING --
         concepts = eng.get("concepts_extracted", [])
@@ -46,7 +38,7 @@ class Turn:
             lines.append(f"Confidence: {best_conf:.2f}")
             t = timings.get("understanding", 0)
             header = f"UNDERSTANDING ({t:.0f}ms)" if t else "UNDERSTANDING"
-            self.sections.append((header, _render_ansi(Text("\n".join(lines), style="cyan"))))
+            self.sections.append((header, "\n".join(lines)))
 
         # -- ACTIVATION --
         active = eng.get("activation_active", [])
@@ -68,7 +60,7 @@ class Turn:
                     rows.append(f"  {name:<16s} {bar}  {level:.3f}")
             t = timings.get("activation", 0)
             header = f"ACTIVATION ({t:.0f}ms)" if t else "ACTIVATION"
-            self.sections.append((header, _render_ansi(Text("\n".join(rows), style="green"))))
+            self.sections.append((header, "\n".join(rows)))
 
         # -- WORLD STATE --
         ws = eng.get("world_state", {})
@@ -94,29 +86,10 @@ class Turn:
                     lines_ws.append(f"  {src} -[{pred}]? {tgt}  {conf:.2f}{neg}")
             if ws.get("n_alternatives", 0) > 0:
                 lines_ws.append("")
-                lines_ws.append(f"  ⚠ {ws['n_alternatives']} competing interpretation(s)")
+                lines_ws.append(f"  competing interpretations: {ws['n_alternatives']}")
             t = timings.get("world_state", 0)
             header = f"WORLD STATE ({t:.0f}ms)" if t else "WORLD STATE"
-            self.sections.append((header, _render_ansi(Text("\n".join(lines_ws), style="yellow"))))
-
-        # -- WORLD MODEL UPDATE --
-        pre_c, pre_r = eng.get("graph_pre_state", (0, 0))
-        post_c = eng.get("total_concepts", 0)
-        post_r = eng.get("total_relations", 0)
-        new_c = post_c - pre_c
-        new_r = post_r - pre_r
-        if new_c > 0 or new_r > 0 or rels:
-            lines2 = []
-            for r in rels[:5]:
-                src = r.get("source", "?")
-                pred = r.get("predicate", "?")
-                tgt = r.get("target", "?")
-                lines2.append(f"  {src} -[{pred}]? {tgt}   (new)")
-            if not lines2 and (new_c > 0 or new_r > 0):
-                lines2.append(f"  +{new_c} concepts, +{new_r} relations stored")
-            t = timings.get("world_update", 0)
-            header = f"WORLD MODEL UPDATE ({t:.0f}ms)" if t else "WORLD MODEL UPDATE"
-            self.sections.append((header, _render_ansi(Text("\n".join(lines2), style="blue"))))
+            self.sections.append((header, "\n".join(lines_ws)))
 
         # -- CONTEXT --
         ctx = eng.get("context", {})
@@ -129,7 +102,7 @@ class Turn:
             ]
             t_ctx = timings.get("context", 0)
             header = f"CONTEXT ({t_ctx:.0f}ms)" if t_ctx else "CONTEXT"
-            self.sections.append((header, _render_ansi(Text("\n".join(ctx_lines), style="cyan"))))
+            self.sections.append((header, "\n".join(ctx_lines)))
 
         # -- GOALS --
         gls = eng.get("goals", {})
@@ -149,7 +122,7 @@ class Turn:
                 goal_lines.append(f"  Current: {current_task}")
             t_goal = timings.get("goals", 0)
             header = f"GOALS ({t_goal:.0f}ms)" if t_goal else "GOALS"
-            self.sections.append((header, _render_ansi(Text("\n".join(goal_lines), style="green"))))
+            self.sections.append((header, "\n".join(goal_lines)))
 
         # -- PLANNING --
         plan = eng.get("plan", {})
@@ -160,10 +133,10 @@ class Turn:
                 status = step.get("status", "pending")
                 plan_lines.append(f"    [{status}] {action}")
             if plan.get("failed_steps", 0) > 0:
-                plan_lines.append(f"  ⚠ {plan['failed_steps']} failed step(s) — replanning")
+                plan_lines.append(f"  failed: {plan['failed_steps']} step(s) — replanning")
             t_plan = timings.get("planning", 0)
             header = f"PLANNING ({t_plan:.0f}ms)" if t_plan else "PLANNING"
-            self.sections.append((header, _render_ansi(Text("\n".join(plan_lines), style="yellow"))))
+            self.sections.append((header, "\n".join(plan_lines)))
 
         # -- SIMULATION --
         sim = eng.get("simulation", {})
@@ -175,12 +148,32 @@ class Turn:
                 sim_lines.append(f"  {action}  ({prob:.2f})")
             t_sim = timings.get("simulation", 0)
             header = f"SIMULATION ({t_sim:.0f}ms)" if t_sim else "SIMULATION"
-            self.sections.append((header, _render_ansi(Text("\n".join(sim_lines), style="blue"))))
+            self.sections.append((header, "\n".join(sim_lines)))
+
+        # -- WORLD MODEL UPDATE --
+        pre_c, pre_r = eng.get("graph_pre_state", (0, 0))
+        post_c = eng.get("total_concepts", 0)
+        post_r = eng.get("total_relations", 0)
+        new_c = post_c - pre_c
+        new_r = post_r - pre_r
+        rels_raw = eng.get("extracted_relations_raw", [])
+        if new_c > 0 or new_r > 0 or rels_raw:
+            lines2 = []
+            for r in rels_raw[:5]:
+                src = r.get("source", "?")
+                pred = r.get("predicate", "?")
+                tgt = r.get("target", "?")
+                lines2.append(f"  {src} -[{pred}]? {tgt}   (new)")
+            if not lines2 and (new_c > 0 or new_r > 0):
+                lines2.append(f"  +{new_c} concepts, +{new_r} relations stored")
+            t = timings.get("world_update", 0)
+            header = f"WORLD MODEL UPDATE ({t:.0f}ms)" if t else "WORLD MODEL UPDATE"
+            self.sections.append((header, "\n".join(lines2)))
 
         # -- REASONING --
         inf = eng.get("inference_result", {})
-        chain_lines = []
         if inf:
+            chain_lines = []
             inferences = inf.get("inferences", [])
             contradictions = inf.get("contradictions", [])
             for inv in inferences[:4]:
@@ -191,22 +184,34 @@ class Turn:
                 chain_lines.append(f"  {src} -[{pred}]→ {tgt}  ({conf:.2f})")
                 steps = inv.get("steps", [])
                 if steps:
-                    chain_lines.append(f"    ∵ {steps[0].get('premise', '')}" if isinstance(steps[0], dict) else "")
+                    step0 = steps[0]
+                    premise = step0.get("premise", "") if isinstance(step0, dict) else ""
+                    if premise:
+                        chain_lines.append(f"    \u2235 {premise}")
             for c in contradictions[:2]:
                 desc = c.get("description", "")
-                chain_lines.append(f"  ⚠ {desc}")
+                chain_lines.append(f"  \u26a0 {desc}")
             pt = inf.get("processing_time_ms", 0)
             header = f"REASONING ({pt:.0f}ms)" if pt else "REASONING"
-            self.sections.append((header, _render_ansi(Text("\n".join(chain_lines), style="magenta"))))
+            self.sections.append((header, "\n".join(chain_lines)))
         else:
-            self.sections.append(("REASONING", _render_ansi(Text("No new inferences.", style="dim white"))))
+            self.sections.append(("REASONING", "No new inferences."))
 
         # -- LANGUAGE --
         gen = eng.get("generated_text", "")
         if gen:
             t_lang = timings.get("language", 0)
             header = f"LANGUAGE ({t_lang:.0f}ms)" if t_lang else "LANGUAGE"
-            self.sections.append((header, _render_ansi(Text(gen, style="white bold"))))
+            self.sections.append((header, gen))
+
+        # -- MEMORY --
+        mem_lines = [f"Graph: {post_c} concepts, {post_r} relations"]
+        if new_c > 0 or new_r > 0:
+            mem_lines.append(f"This session: +{new_c} concepts, +{new_r} relations")
+        mem_lines.append(f"Last learned: \"{eng.get('text', '')[:60]}\"")
+        total_t = sum(timings.values()) if timings else 0
+        header = f"MEMORY ({total_t:.0f}ms total)" if total_t else "MEMORY"
+        self.sections.append((header, "\n".join(mem_lines)))
 
         # -- LEARNING --
         resolutions = eng.get("learning_resolutions", [])
@@ -215,23 +220,11 @@ class Turn:
             for r in resolutions:
                 learn_lines.append(
                     f"  Resolved: {r.get('loser', '?')} "
-                    f"({r.get('loser_original', 0):.2f}→{r.get('loser_new', 0):.2f})"
+                    f"({r.get('loser_original', 0):.2f}\u2192{r.get('loser_new', 0):.2f})"
                 )
             t_learn = timings.get("learning", 0)
             header = f"LEARNING ({t_learn:.0f}ms)" if t_learn else "LEARNING"
-            self.sections.append((
-                header,
-                _render_ansi(Text("\n".join(learn_lines), style="dim cyan"))
-            ))
-
-        # -- MEMORY --
-        mem_lines = [f"Graph: {post_c} concepts, {post_r} relations"]
-        if new_c > 0 or new_r > 0:
-            mem_lines.append(f"This session: +{new_c} concepts, +{new_r} relations")
-        mem_lines.append(f"Last learned: \"{eng.get('text', '')[:60]}\"")
-        total_t = sum(timings.values())
-        header = f"MEMORY ({total_t:.0f}ms total)" if total_t else "MEMORY"
-        self.sections.append((header, _render_ansi(Text("\n".join(mem_lines), style="dim white"))))
+            self.sections.append((header, "\n".join(learn_lines)))
 
 
 class OutputStore:
@@ -252,8 +245,8 @@ class OutputStore:
             if i > 0:
                 parts.append("\n")
             parts.append(f">>> {turn.user_text}\n")
-            for section_name, ansi_text in turn.sections:
+            for section_name, section_text in turn.sections:
                 sep_len = max(0, 70 - len(section_name) - 8)
-                parts.append(f"━━━━━━ {section_name} ━━━━━━\n")
-                parts.append(ansi_text + "\n")
-        return PTK_ANSI("".join(parts))
+                parts.append(f"\u2501\u2501\u2501\u2501 {section_name} \u2501\u2501\u2501\u2501\n")
+                parts.append(section_text + "\n")
+        return "".join(parts)

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import threading
 
 from prompt_toolkit import Application
 from prompt_toolkit.buffer import Buffer
@@ -12,7 +11,6 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.layout import Layout, HSplit, Window
 from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.styles import Style
-from prompt_toolkit.formatted_text import ANSI
 
 from .chat import OutputStore, Turn
 from .dashboard import render_header
@@ -36,9 +34,6 @@ class WorldFieldApp:
         self.store = OutputStore()
         self.session_additions = [0, 0]
         self._processing = False
-
-        if self.engine is not None:
-            threading.Thread(target=self._preload_models, daemon=True).start()
 
         self.input_buffer = Buffer(
             history=FileHistory(".worldfield_history"),
@@ -135,18 +130,8 @@ class WorldFieldApp:
             "graph_pre_state": (t, r),
         }
 
-    # ── Models ─────────────────────────────────────────────────────
-
-    def _preload_models(self):
-        try:
-            if self.engine:
-                _ = self.engine.text_encoder
-                _ = self.engine.nlp
-        except Exception:
-            pass
-
     def _get_header_text(self):
-        return ANSI(render_header(self.engine, tuple(self.session_additions)))
+        return render_header(self.engine, tuple(self.session_additions))
 
     def _get_output_text(self):
         return self.store.get_formatted_text()
@@ -177,7 +162,9 @@ class WorldFieldApp:
 
             new_turn = Turn(text, result)
         except Exception as e:
-            err_body = f"Pipeline error: {e}"
+            import traceback
+            tb = traceback.format_exc()
+            err_body = f"Pipeline error: {e}\n\nTraceback:\n{tb}"
             new_turn = Turn(text, self._placeholder_turn(text, err_body))
         finally:
             self.store.turns[-1] = new_turn
