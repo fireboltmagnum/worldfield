@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import threading
 
-from prompt_toolkit import Application
+from prompt_toolkit import Application, get_app
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.completion import WordCompleter
@@ -14,9 +14,6 @@ from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
 from prompt_toolkit.styles import Style
 from prompt_toolkit.formatted_text import ANSI
 
-from ..core.engine import Engine
-from ..config import Config
-from ..reasoning import ReasoningEngine
 from .chat import OutputStore, Turn
 from .dashboard import render_header
 
@@ -34,16 +31,20 @@ _style = Style([
 class WorldFieldApp:
     """Manages the prompt_toolkit Application lifecycle."""
 
-    def __init__(self):
-        self.cfg = Config()
-        self.engine = Engine(self.cfg)
-        self.reasoner = ReasoningEngine(self.engine.graph)
+    def __init__(self,
+                 cfg: Config | None = None,
+                 engine: Engine | None = None,
+                 reasoner: ReasoningEngine | None = None):
+        self.cfg = cfg
+        self.engine = engine
+        self.reasoner = reasoner
         self.store = OutputStore()
         self.session_additions = [0, 0]  # [concepts, relations]
         self._processing = False
 
         # Pre-load slow models in background so first interaction is faster
-        threading.Thread(target=self._preload_models, daemon=True).start()
+        if self.engine is not None:
+            threading.Thread(target=self._preload_models, daemon=True).start()
 
         # -- Input buffer --
         self.input_buffer = Buffer(
@@ -156,9 +157,11 @@ class WorldFieldApp:
             result = await loop.run_in_executor(
                 None, self.engine.process, text
             )
-            answer = await loop.run_in_executor(
-                None, self.reasoner.answer, text
-            )
+            answer = None
+            if self.reasoner is not None:
+                answer = await loop.run_in_executor(
+                    None, self.reasoner.answer, text
+                )
             result["_answer"] = answer
 
             pre_c, pre_r = result.get("graph_pre_state", (0, 0))
@@ -297,5 +300,13 @@ class WorldFieldApp:
 
 def run_cli():
     """Entry point — called from __main__.py."""
-    wf = WorldFieldApp()
+    # Defer heavy imports so starting the CLI is fast
+    from ..config import Config
+    from ..core.engine import Engine
+    from ..reasoning import ReasoningEngine
+
+    cfg = Config()
+    engine = Engine(cfg)
+    reasoner = ReasoningEngine(engine.graph)
+    wf = WorldFieldApp(cfg, engine, reasoner)
     wf.run()

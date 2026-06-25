@@ -71,3 +71,7 @@ def main():
     check_deps()
     from .__main__ import main as cli_main
     cli_main()
+
+
+if __name__ == "__main__":
+    main()

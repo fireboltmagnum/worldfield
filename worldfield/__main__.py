@@ -12,13 +12,10 @@ from __future__ import annotations
 
 import sys
 
-from .launcher import check_deps
-from .config import Config
-from .core.engine import Engine
-from .reasoning import ReasoningEngine, format_answer
-
 
 def main():
+    from .launcher import check_deps
+
     # Auto-install dependencies on first run
     if "--check-deps" in sys.argv:
         check_deps()
@@ -31,10 +28,13 @@ def main():
         run_cli()
         return
 
-    cfg = Config()
-    cmd = args[0]
+    from .config import Config
+    from .core.engine import Engine
+    from .reasoning import ReasoningEngine, format_answer
 
-    if cmd == "reason":
+    cfg = Config()
+
+    if args[0] == "reason":
         text = " ".join(args[1:])
         engine = Engine(cfg)
         reasoner = ReasoningEngine(engine.graph)
@@ -44,7 +44,7 @@ def main():
 
     engine = Engine(cfg)
 
-    if cmd == "process":
+    if args[0] == "process":
         text = " ".join(args[1:])
         result = engine.process(text)
         print(f"Fragment: {result['fragment_id']}")
@@ -53,21 +53,21 @@ def main():
             print(f"  {r['score']:.3f} — {r['metadata']}")
         engine._save_state()
 
-    elif cmd == "query":
+    elif args[0] == "query":
         text = " ".join(args[1:])
         result = engine.query(text)
         print(f"Related: {len(result['related'])} fragments")
         for r in result['related'][:5]:
             print(f"  {r['score']:.3f} — {r['metadata']}")
 
-    elif cmd == "refine":
+    elif args[0] == "refine":
         text = " ".join(args[1:])
         traj = engine.refine(text)
         print(f"Refinement trajectory ({len(traj)} iters):")
         for t in traj:
             print(f"  iter {t['iter']}: active={t['active_nodes']} score={t['top_score']:.3f}")
 
-    elif cmd == "stats":
+    elif args[0] == "stats":
         g = engine.graph
         print(f"Concepts: {g.n_concepts}")
         print(f"Relations: {g.n_relations}")
@@ -77,12 +77,12 @@ def main():
             for name, conf in g.top_concepts(5):
                 print(f"  {name}: {conf:.3f}")
 
-    elif cmd == "reset":
+    elif args[0] == "reset":
         engine.reset()
         print("Engine state reset.")
 
     else:
-        print(f"Unknown command: {cmd}")
+        print(f"Unknown command: {args[0]}")
         print("Usage: python -m worldfield [reason|process|query|stats|reset]")
 
 
