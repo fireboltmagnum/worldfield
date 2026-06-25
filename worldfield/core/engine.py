@@ -120,17 +120,27 @@ class Engine:
 
     def process(self, text: str) -> dict[str, Any]:
         """NLP → extract → resolve → graph → slots → search."""
+        timings = {}
+        t0 = time.perf_counter()
+
         # 1. NLP: extract concepts and relations
         concepts, relations = self.extractor.extract_with_vectors(
             text, self.text_encoder, self.cfg
         )
+        timings["understanding"] = (time.perf_counter() - t0) * 1000
+        t1 = time.perf_counter()
 
         # 2. Resolve surface forms to canonical concepts
         resolved_conc, resolved_rel = self.resolver.extract_and_resolve(
             text, concepts, relations, modality="text", source="user_input"
         )
+        timings["resolve"] = (time.perf_counter() - t1) * 1000
+        t2 = time.perf_counter()
 
-        # 3. Record in World Graph (atomic observation)
+        # 3. Record graph state before update
+        pre_concepts = self.graph.n_concepts
+        pre_relations = self.graph.n_relations
+
         obs_id = self.graph.record_observation(
             text=text,
             concepts=resolved_conc,
@@ -138,6 +148,8 @@ class Engine:
             modality="text",
             source="user_input",
         )
+        timings["world_update"] = (time.perf_counter() - t2) * 1000
+        t3 = time.perf_counter()
 
         # 4. Update slot memory with concept vectors
         slot_updates = []
@@ -146,6 +158,8 @@ class Engine:
                 if c.get("vector") is not None:
                     self.slots.update(c["vector"])
                     slot_updates.append(c["name"])
+        timings["slot_update"] = (time.perf_counter() - t3) * 1000
+        t4 = time.perf_counter()
 
         # 5. Update PMI graph (association layer) — uses compact sequential IDs
         if not hasattr(self, "_pmi_ids"):
@@ -159,27 +173,34 @@ class Engine:
                 self._pmi_next += 1
             concept_ids.append(self._pmi_ids[name])
         self.pmi.observe(concept_ids)
+        timings["pmi"] = (time.perf_counter() - t4) * 1000
+        t5 = time.perf_counter()
 
         # 6. Graph reasoning
         query_concept = resolved_conc[0]["name"] if resolved_conc else ""
         related_concepts = {}
         if query_concept and self.graph.n_concepts > 0:
             related_concepts = self.graph.query(query_concept, hops=1)
+        timings["graph_query"] = (time.perf_counter() - t5) * 1000
 
         # 7. Build result
         result = {
             "observation_id": obs_id,
             "text": text,
             "concepts_extracted": [c["name"] for c in resolved_conc],
+            "extracted_concepts_raw": resolved_conc,
+            "extracted_relations_raw": resolved_rel,
             "relations_extracted": [
                 f"{r['source']} -[{r['predicate']}]-> {r['target']}"
                 for r in resolved_rel
             ],
+            "graph_pre_state": (pre_concepts, pre_relations),
             "slot_concepts": slot_updates,
-            "slot_state_active": self.slots.active_count(),
+            "slot_state_active": self.slots.active_count() if self.slots else 0,
             "graph_query": related_concepts,
             "total_concepts": self.graph.n_concepts,
             "total_relations": self.graph.n_relations,
+            "timings": timings,
         }
 
         self._save_state()
