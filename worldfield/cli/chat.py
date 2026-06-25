@@ -92,17 +92,67 @@ class Turn:
             self.sections.append((header, "\n".join(lines_ws)))
 
         # -- CONTEXT --
-        ctx = eng.get("context", {})
-        if ctx:
-            ctx_lines = [
-                f"  Topic: {ctx.get('topic', 'none')}",
-                f"  Turn: {ctx.get('turn', 0)}, "
-                f"Recent concepts: {len(ctx.get('recent_concepts', []))}",
-                f"  History turns: {ctx.get('history_length', 0)}",
-            ]
-            t_ctx = timings.get("context", 0)
-            header = f"CONTEXT ({t_ctx:.0f}ms)" if t_ctx else "CONTEXT"
+        cw = eng.get("context_window")
+        if cw:
+            ctx_lines = []
+            if cw.get("topic_stack"):
+                topics = " > ".join(cw["topic_stack"])
+                ctx_lines.append(f"  topics: {topics}")
+            entities = cw.get("entities", [])
+            if entities:
+                ent_str = ", ".join(f"{e['name']}({e['mention_count']})" for e in entities[:8])
+                ctx_lines.append(f"  entities: {ent_str}")
+            ctx_lines.append(f"  turn: {cw.get('turn', '?')}  events: {cw.get('n_events', 0)}  "
+                  f"world_states: {cw.get('n_world_states', 0)}")
+            refs = cw.get("unresolved_refs", [])
+            if refs:
+                ctx_lines.append(f"  unresolved: {', '.join(r['surface'] for r in refs)}")
+            t_cw = timings.get("context_window", 0)
+            header = f"CONTEXT ({t_cw:.0f}ms)" if t_cw else "CONTEXT"
             self.sections.append((header, "\n".join(ctx_lines)))
+        else:
+            ctx = eng.get("context", {})
+            if ctx:
+                ctx_lines = [
+                    f"  Topic: {ctx.get('topic', 'none')}",
+                    f"  Turn: {ctx.get('turn', 0)}, "
+                    f"Recent concepts: {len(ctx.get('recent_concepts', []))}",
+                    f"  History turns: {ctx.get('history_length', 0)}",
+                ]
+                t_ctx = timings.get("context", 0)
+                header = f"CONTEXT ({t_ctx:.0f}ms)" if t_ctx else "CONTEXT"
+                self.sections.append((header, "\n".join(ctx_lines)))
+
+        # -- ATTENTION --
+        attn = eng.get("attention")
+        if attn:
+            attn_lines = []
+            if attn.task_mode != "browsing":
+                attn_lines.append(f"  Mode: {attn.task_mode}")
+            for sc in attn.attended[:10]:
+                bar = "#" * int(sc.score * 20) + "-" * (20 - int(sc.score * 20))
+                attn_lines.append(f"  + {sc.name:<20} {sc.score:.3f} {bar}")
+            if attn.suppressed:
+                suppressed_str = ", ".join(f"{s.name}({s.score:.2f})" for s in attn.suppressed[:5])
+                attn_lines.append(f"  suppressed: {suppressed_str}")
+            if attn.n_candidates:
+                attn_lines.append(f"  candidates: {attn.n_candidates}")
+            t_attn = timings.get("attention", 0)
+            header = f"ATTENTION ({t_attn:.0f}ms)" if t_attn else "ATTENTION"
+            self.sections.append((header, "\n".join(attn_lines)))
+
+        # -- RETRIEVAL --
+        mr = eng.get("memory_retrieval")
+        if mr:
+            mr_lines = []
+            node_names = list(mr.nodes.keys())
+            mr_lines.append(f"  nodes ({len(node_names)}): {', '.join(node_names[:10])}")
+            mr_lines.append(f"  edges: {len(mr.edges)}")
+            if mr.pruned > 0:
+                mr_lines.append(f"  pruned: {mr.pruned}")
+            t_mr = timings.get("memory_retrieval", 0)
+            header = f"RETRIEVAL ({t_mr:.0f}ms)" if t_mr else "RETRIEVAL"
+            self.sections.append((header, "\n".join(mr_lines)))
 
         # -- GOALS --
         gls = eng.get("goals", {})
