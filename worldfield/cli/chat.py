@@ -149,6 +149,22 @@ class Turn:
             header = f"LANGUAGE ({t_lang:.0f}ms)" if t_lang else "LANGUAGE"
             self.sections.append((header, _render_ansi(Text(gen, style="white bold"))))
 
+        # -- LEARNING --
+        resolutions = eng.get("learning_resolutions", [])
+        if resolutions:
+            learn_lines = []
+            for r in resolutions:
+                learn_lines.append(
+                    f"  Resolved: {r.get('loser', '?')} "
+                    f"({r.get('loser_original', 0):.2f}→{r.get('loser_new', 0):.2f})"
+                )
+            t_learn = timings.get("learning", 0)
+            header = f"LEARNING ({t_learn:.0f}ms)" if t_learn else "LEARNING"
+            self.sections.append((
+                header,
+                _render_ansi(Text("\n".join(learn_lines), style="dim cyan"))
+            ))
+
         # -- MEMORY --
         mem_lines = [f"Graph: {post_c} concepts, {post_r} relations"]
         if new_c > 0 or new_r > 0:

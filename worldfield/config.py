@@ -48,5 +48,12 @@ class Config:
     nlg_backend: str = "template"
     nlg_model: str = "google/flan-t5-small"
 
+    # Continuous learning
+    learning_decay: float = 0.995
+    learning_penalty: float = 0.5
+    learning_prune_conf: float = 0.05
+    learning_prune_support: int = 1
+    learning_prune_interval: int = 10
+
     # Training
     temperature: float = 0.07

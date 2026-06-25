@@ -4,6 +4,7 @@ from .config import Config
 from .device import pick_device
 from .core import Engine, WorldGraph, SlotMemory, PMIGraph
 from .reasoning import ReasoningEngine, format_answer
+from .learning import LearningEngine
 
 __all__ = [
     "__version__", "Config", "pick_device",

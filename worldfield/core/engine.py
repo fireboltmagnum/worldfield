@@ -20,6 +20,7 @@ from .activation import ActivationEngine
 from .world_state import WorldStateBuilder
 from ..reasoning.inference import InferenceEngine
 from ..nlg import Decoder
+from ..learning import LearningEngine
 
 class Engine:
     def __init__(self, config: Config | None = None):
@@ -61,6 +62,16 @@ class Engine:
             backend=self.cfg.nlg_backend,
             model_name=self.cfg.nlg_model,
             device=self.device,
+        )
+
+        # Continuous learning engine
+        self.learner = LearningEngine(
+            graph=self.graph,
+            confidence_decay=self.cfg.learning_decay,
+            contradiction_penalty=self.cfg.learning_penalty,
+            prune_confidence_threshold=self.cfg.learning_prune_conf,
+            prune_support_threshold=self.cfg.learning_prune_support,
+            prune_interval=self.cfg.learning_prune_interval,
         )
 
         # Secondary association layer
@@ -267,6 +278,19 @@ class Engine:
             "timings": timings,
         }
 
+        # 9. Continuous learning (consolidation)
+        t_learn = time.perf_counter()
+        resolutions = self.learner.observe(result)
+        self.learner.refine_concepts(result)
+        timings["learning"] = (time.perf_counter() - t_learn) * 1000
+        # Store resolutions for display
+        result["learning_resolutions"] = [
+            {"winner": r.winner, "loser": r.loser,
+             "loser_original": r.loser_original_conf,
+             "loser_new": r.loser_new_conf}
+            for r in resolutions
+        ]
+
         # Decay activation for next turn
         self.activator.tick()
 
@@ -342,6 +366,18 @@ class Engine:
             "total_relations": self.graph.n_relations,
             "timings": timings,
         }
+        # Learning consolidation for image inputs
+        t_learn = time.perf_counter()
+        img_resolutions = self.learner.observe(result)
+        self.learner.refine_concepts(result)
+        timings["learning"] = (time.perf_counter() - t_learn) * 1000
+        result["timings"] = timings
+        result["learning_resolutions"] = [
+            {"winner": r.winner, "loser": r.loser,
+             "loser_original": r.loser_original_conf,
+             "loser_new": r.loser_new_conf}
+            for r in img_resolutions
+        ]
         self.activator.tick()
         self._save_state()
         return result
