@@ -7,23 +7,34 @@
 
 WorldField is not a fact engine or graph chatbot. It is a cognitive system that builds and updates an internal world model. The language system is an **interface** to that world model, not the intelligence itself.
 
-The pipeline:
+The pipeline (phased):
 
 ```
-Input (text/image/audio/video)
+Input
 ↓
-Understanding (concept extraction, perception)
+Understanding
 ↓
-Concept Activation (spreading activation, context)
+Activation
 ↓
-World State (temporal reality model with uncertainty)
+World State
 ↓
-Reasoning (inference, planning, simulation)
+[Context Layer]    ← Phase 5
 ↓
-Updated World State
+[Goal Layer]       ← Phase 6
 ↓
-Language Generation (project world state to text)
+[Planning]         ← Phase 6
+↓
+Reasoning
+↓
+[Simulation]       ← Phase 7
+↓
+Language Generation
+↓
+Learning
 ```
+
+**Current priority (Phases 1-4):** Understanding → Activation → World State → Reasoning → Language → Learning
+**Future (Phases 5-7):** Context → Goals → Planning → Simulation
 
 ## Architecture Principles
 
@@ -298,7 +309,116 @@ Decoder (T5-small / etc.)
 
 ---
 
-## Phase 6: Continuous Learning
+## Phase 5: Context Layer (Future — Do Not Build Yet)
+
+### Problem
+Without context, every input is processed independently. The system cannot maintain a topic, track discussion history, or know what's important right now.
+
+### What It Stores
+- **Current Topic** — what the conversation is about (e.g., "Language Generation")
+- **Recent Concepts** — concepts mentioned recently (e.g., decoder, reasoning, graph)
+- **Working Set** — concepts with elevated activation that persist across turns
+- **Interaction History** — recent inputs and system responses
+
+### Why It Matters
+Without context:
+```
+User: "What about confidence propagation?"
+System: starts fresh, doesn't know we were discussing reasoning
+```
+
+With context:
+```
+User: "What about confidence propagation?"
+System: "Building on our discussion of the reasoning engine,
+        confidence propagation works by..."
+```
+
+### Components
+**ContextManager** (`worldfield/core/context.py`)
+- `topic: str` — current discussion topic
+- `recent_concepts: deque[str]` — sliding window of mentioned concepts
+- `working_set: dict[str, float]` — persistently activated concepts
+- `history: list[dict]` — recent interaction turns
+
+### Deliverable
+`worldfield/core/context.py` — ContextManager class.
+
+---
+
+## Phase 6: Goal Layer (Future — Do Not Build Yet)
+
+### Problem
+Without goals, the system reacts but does not act. It thinks, forgets, thinks, forgets — no direction.
+
+### What It Stores
+- **Primary Goal** — the main objective (e.g., "Build reasoning engine")
+- **Subgoals** — decomposed steps (e.g., "Implement inheritance")
+- **Current Task** — what's being worked on now
+- **Blocked By** — dependencies that need resolving
+- **Progress** — completed tasks, verification status
+
+### Why It Matters
+Goals turn the system from reactive to proactive. Instead of waiting for input, it can execute multi-step plans, verify its own work, and maintain direction across sessions.
+
+### Components
+**GoalManager** (`worldfield/core/goals.py`)
+- `goals: list[Goal]` — prioritized goal stack
+- `current_task: str` — active subtask
+- `blockers: list[str]` — what's preventing progress
+- `verify()` — check if current task is complete
+
+### Deliverable
+`worldfield/core/goals.py` — GoalManager class.
+
+---
+
+## Phase 7: Planning + Simulation (Future — Do Not Build Yet)
+
+### Problem
+Current reasoning is inferential (what IS true), not predictive (what WILL be true). Planning and simulation are what transform a knowledge system into an autonomous agent.
+
+### Planning
+The planner decomposes goals into executable steps:
+
+```
+Goal: Build decoder
+Planner:
+  1. Build serializer
+  2. Build prompt constructor
+  3. Build decoder wrapper
+  4. Test
+  5. Benchmark
+```
+
+**Planner** (`worldfield/planning/planner.py`)
+- `plan(goal: Goal, state: WorldState) -> list[Step]`
+- `replan(failed_step: Step) -> list[Step]`
+
+### Simulation
+The simulator predicts possible futures based on the current world state:
+
+```
+Current: cat sleeping on sofa
+Simulation:
+  - If cat jumps → sofa becomes occupied, cat becomes active
+  - If dog enters → possible interaction (play/fight/flee)
+  - If cat sleeps → location remains same, time passes
+```
+
+**Simulator** (`worldfield/simulation/engine.py`)
+- `simulate(world_state, actions) -> list[WorldState]` — branch predictions
+- `rank_outcomes(outcomes) -> list[WorldState]` — probability-weighted futures
+
+### Why Not Now
+Building simulation on top of a system that can't reliably reason yet would produce unreliable predictions. Simulation is the roof, not the foundation.
+
+### Deliverable
+`worldfield/planning/`, `worldfield/simulation/` — planner and simulator.
+
+---
+
+## Phase 8: Continuous Learning
 
 ### Goal
 No epochs, no retraining loops. Learning updates the graph continuously as the system processes input.

@@ -54,6 +54,21 @@ class Persistence:
         except (FileNotFoundError, json.JSONDecodeError):
             return None
 
+    # ── Activation ─────────────────────────────────────────────────────
+
+    def save_activation(self, state_dict: dict):
+        self.db_path.mkdir(parents=True, exist_ok=True)
+        with open(self.db_path / "activation.json", "w") as f:
+            json.dump(state_dict, f)
+
+    def load_activation(self) -> dict | None:
+        p = self.db_path / "activation.json"
+        try:
+            with open(p) as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return None
+
     # ── PMI Graph ─────────────────────────────────────────────────────
 
     def save_pmi_graph(self, state_dict: dict):

@@ -60,9 +60,35 @@
                            │
                            ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      REASONING                                   │
+│                      CONTEXT LAYER (Phase 5)                   │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │  InferenceEngine                                          │   │
+│  │  ContextManager                                           │   │
+│  │  • topic: current discussion topic                       │   │
+│  │  • recent_concepts: sliding window                       │   │
+│  │  • working_set: persistently activated concepts          │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                           │                                        │
+│                           ▼                                        │
+│                      GOAL LAYER (Phase 6)                         │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  GoalManager                                              │   │
+│  │  • goals: prioritized goal stack                         │   │
+│  │  • current_task: active subtask                          │   │
+│  │  • blockers: dependencies blocking progress              │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                           │                                        │
+│                           ▼                                        │
+│                      PLANNING (Phase 7)                           │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  Planner                                                  │   │
+│  │  • plan(goal, state) → list[Step]                        │   │
+│  │  • replan(failed_step) → list[Step]                      │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                           │                                        │
+│                           ▼                                        │
+│                      REASONING + SIMULATION (Phase 7)              │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  InferenceEngine + Simulator                              │   │
 │  │  • inherit_properties(world_state, graph)                 │   │
 │  │  • compose_relations(world_state, graph)                  │   │
 │  │  • detect_contradictions(world_state)                     │   │

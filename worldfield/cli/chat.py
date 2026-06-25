@@ -48,22 +48,26 @@ class Turn:
             header = f"UNDERSTANDING ({t:.0f}ms)" if t else "UNDERSTANDING"
             self.sections.append((header, _render_ansi(Text("\n".join(lines), style="cyan"))))
 
-        # -- ACTIVATION FLOW --
-        related = eng.get("graph_query", {})
-        if related:
+        # -- ACTIVATION --
+        active = eng.get("activation_active", [])
+        working_set = eng.get("activation_working_set", [])
+        if active or working_set:
             rows = []
-            all_entries = []
-            for concept, entries in related.items():
-                conf = max(e.get("confidence", 0) for e in entries)
-                all_entries.append((concept, conf))
-            all_entries.sort(key=lambda x: -x[1])
             bar_width = 16
-            for name, conf in all_entries[:8]:
-                filled = int(conf * bar_width)
-                bar = "█" * filled + "░" * (bar_width - filled)
-                rows.append(f"  {name:<12s} {bar}  {conf:.2f}")
-            t = timings.get("graph_query", 0)
-            header = f"ACTIVATION FLOW ({t:.0f}ms)" if t else "ACTIVATION FLOW"
+            if active:
+                rows.append("Active:")
+                for name, level in active[:6]:
+                    filled = int(min(level, 1.0) * bar_width)
+                    bar = "█" * filled + "░" * (bar_width - filled)
+                    rows.append(f"  {name:<16s} {bar}  {level:.3f}")
+            if working_set:
+                rows.append("Working Set:")
+                for name, level in working_set[:4]:
+                    filled = int(min(level, 1.0) * bar_width)
+                    bar = "█" * filled + "░" * (bar_width - filled)
+                    rows.append(f"  {name:<16s} {bar}  {level:.3f}")
+            t = timings.get("activation", 0)
+            header = f"ACTIVATION ({t:.0f}ms)" if t else "ACTIVATION"
             self.sections.append((header, _render_ansi(Text("\n".join(rows), style="green"))))
 
         # -- WORLD STATE --

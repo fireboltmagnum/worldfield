@@ -36,5 +36,10 @@ class Config:
     video_frames: int = 8
     video_sample_rate: str = "uniform"
 
+    # Activation layer
+    activation_decay: float = 0.3
+    activation_spread: float = 0.5
+    activation_hops: int = 2
+
     # Training
     temperature: float = 0.07

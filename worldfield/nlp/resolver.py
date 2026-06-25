@@ -58,10 +58,10 @@ class ConceptResolver:
         for r in relations:
             src = self.resolve(r["source"], modality=modality, source=source, example=text)
             tgt = self.resolve(r["target"], modality=modality, source=source, example=text)
-            resolved_rel.append({
-                **r,
-                "source": src,
-                "target": tgt,
-            })
+            entry = {**r, "source": src, "target": tgt}
+            # Negated relations set polarity to False
+            if r.get("negated"):
+                entry["polarity"] = False
+            resolved_rel.append(entry)
 
         return resolved_conc, resolved_rel

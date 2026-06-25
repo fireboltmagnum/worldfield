@@ -16,6 +16,8 @@ from ..db.store import Persistence
 from .slots import SlotMemory
 from .graph import PMIGraph
 from .world_graph import WorldGraph
+from .activation import ActivationEngine
+
 class Engine:
     def __init__(self, config: Config | None = None):
         self.cfg = config or Config()
@@ -33,6 +35,14 @@ class Engine:
 
         # Working memory (dimension determined by the text encoder)
         self.slots = None
+
+        # Activation layer (spreading activation over the concept graph)
+        self.activator = ActivationEngine(
+            graph=self.graph,
+            decay_rate=self.cfg.activation_decay,
+            spread_factor=self.cfg.activation_spread,
+            spread_hops=self.cfg.activation_hops,
+        )
 
         # Secondary association layer
         self.pmi = PMIGraph(
@@ -135,9 +145,18 @@ class Engine:
             text, concepts, relations, modality="text", source="user_input"
         )
         timings["resolve"] = (time.perf_counter() - t1) * 1000
+        t_act = time.perf_counter()
+
+        # 3. Activate concepts and spread to related
+        concept_names = [c["name"] for c in resolved_conc]
+        self.activator.trigger(concept_names)
+        self.activator.spread()
+        active_concepts = self.activator.get_active(threshold=0.05)
+        working_set = self.activator.get_working_set(k=10)
+        timings["activation"] = (time.perf_counter() - t_act) * 1000
         t2 = time.perf_counter()
 
-        # 3. Record graph state before update
+        # 4. Record graph state before update
         pre_concepts = self.graph.n_concepts
         pre_relations = self.graph.n_relations
 
@@ -197,11 +216,16 @@ class Engine:
             "graph_pre_state": (pre_concepts, pre_relations),
             "slot_concepts": slot_updates,
             "slot_state_active": self.slots.active_count() if self.slots else 0,
+            "activation_active": active_concepts,
+            "activation_working_set": working_set,
             "graph_query": related_concepts,
             "total_concepts": self.graph.n_concepts,
             "total_relations": self.graph.n_relations,
             "timings": timings,
         }
+
+        # Decay activation for next turn
+        self.activator.tick()
 
         self._save_state()
         return result
@@ -226,6 +250,11 @@ class Engine:
         pre_concepts = self.graph.n_concepts
         pre_relations = self.graph.n_relations
 
+        self.activator.trigger([name])
+        self.activator.spread()
+        active_img = self.activator.get_active(threshold=0.05)
+        timings["activation"] = (time.perf_counter() - t2) * 1000
+
         obs_id = self.graph.record_observation(
             text=f"[image] {source}",
             concepts=[concept],
@@ -244,12 +273,15 @@ class Engine:
             "relations_extracted": [],
             "graph_pre_state": (pre_concepts, pre_relations),
             "graph_query": self.graph.query(name, hops=1) if self.graph.n_concepts > 0 else {},
+            "activation_active": active_img,
+            "activation_working_set": self.activator.get_working_set(k=10),
             "slot_concepts": [name],
             "slot_state_active": self.slots.active_count() if self.slots else 0,
             "total_concepts": self.graph.n_concepts,
             "total_relations": self.graph.n_relations,
             "timings": timings,
         }
+        self.activator.tick()
         self._save_state()
         return result
 
@@ -303,6 +335,7 @@ class Engine:
         if self.slots is not None:
             self.persistence.save_slots(self.slots.state_dict())
         self.persistence.save_world_graph(self.graph.state_dict())
+        self.persistence.save_activation(self.activator.state_dict())
         extra = {
             "pmi_ids": getattr(self, "_pmi_ids", {}),
             "pmi_next": getattr(self, "_pmi_next", 0),
@@ -316,6 +349,9 @@ class Engine:
         graph_sd = self.persistence.load_world_graph()
         if graph_sd:
             self.graph.load_state_dict(graph_sd)
+        act_sd = self.persistence.load_activation()
+        if act_sd:
+            self.activator.load_state_dict(act_sd)
         pmi_sd = self.persistence.load_pmi_graph()
         if pmi_sd:
             self.pmi.load_state_dict(pmi_sd)
@@ -332,8 +368,10 @@ class Engine:
         }
 
     def reset(self):
-        self.slots.reset()
+        if self.slots is not None:
+            self.slots.reset()
         self.graph = WorldGraph()
+        self.activator = ActivationEngine(graph=self.graph)
         self.pmi = PMIGraph(
             min_support=self.cfg.graph_min_support,
             pmi_floor=self.cfg.graph_pmi_floor,
