@@ -206,6 +206,53 @@ class Engine:
         self._save_state()
         return result
 
+    def process_image(self, image, source: str = "") -> dict[str, Any]:
+        """Process an image through the vision pipeline."""
+        import time
+        timings = {}
+        t0 = time.perf_counter()
+
+        # Encode image
+        vec = self.image_encoder.encode(image)
+        timings["image_encoding"] = (time.perf_counter() - t0) * 1000
+        t1 = time.perf_counter()
+
+        # Create a concept from the image vector
+        name = f"image:{source}" if source else "image:unknown"
+        concept = {"name": name, "vector": vec, "pos": "IMAGE", "is_entity": True}
+        timings["concept_formation"] = (time.perf_counter() - t1) * 1000
+        t2 = time.perf_counter()
+
+        pre_concepts = self.graph.n_concepts
+        pre_relations = self.graph.n_relations
+
+        obs_id = self.graph.record_observation(
+            text=f"[image] {source}",
+            concepts=[concept],
+            relations=[],
+            modality="image",
+            source=source,
+        )
+        timings["world_update"] = (time.perf_counter() - t2) * 1000
+
+        result = {
+            "observation_id": obs_id,
+            "text": f"[image] {source}",
+            "concepts_extracted": [name],
+            "extracted_concepts_raw": [concept],
+            "extracted_relations_raw": [],
+            "relations_extracted": [],
+            "graph_pre_state": (pre_concepts, pre_relations),
+            "graph_query": self.graph.query(name, hops=1) if self.graph.n_concepts > 0 else {},
+            "slot_concepts": [name],
+            "slot_state_active": self.slots.active_count() if self.slots else 0,
+            "total_concepts": self.graph.n_concepts,
+            "total_relations": self.graph.n_relations,
+            "timings": timings,
+        }
+        self._save_state()
+        return result
+
     def query(self, text: str, hops: int = 2) -> dict[str, Any]:
         """Query: extract concepts → traverse graph."""
         concepts, _ = self.extractor.extract_with_vectors(text, self.text_encoder)
