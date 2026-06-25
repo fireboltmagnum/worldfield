@@ -3,7 +3,11 @@ from .slots import SlotMemory
 from .graph import PMIGraph
 from .activation import ActivationEngine
 from .world_state import WorldState, WorldStateBuilder, RelationBelief
+from .context import ContextManager
+from .goals import GoalManager
 from .engine import Engine
 
 __all__ = ["WorldGraph", "SlotMemory", "PMIGraph", "ActivationEngine",
-           "WorldState", "WorldStateBuilder", "RelationBelief", "Engine"]
+           "WorldState", "WorldStateBuilder", "RelationBelief",
+           "ContextManager", "GoalManager",
+           "Engine"]

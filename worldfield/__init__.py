@@ -3,11 +3,18 @@ from ._version import __version__
 from .config import Config
 from .device import pick_device
 from .core import Engine, WorldGraph, SlotMemory, PMIGraph
-from .reasoning import ReasoningEngine, format_answer
+from .core import ActivationEngine, WorldState, WorldStateBuilder
+from .core import ContextManager, GoalManager
+from .reasoning import ReasoningEngine, format_answer, InferenceEngine
+from .planning import Planner, PlanStep
+from .simulation import Simulator
 from .learning import LearningEngine
 
 __all__ = [
     "__version__", "Config", "pick_device",
     "Engine", "WorldGraph", "SlotMemory", "PMIGraph",
-    "ReasoningEngine", "format_answer",
+    "ActivationEngine", "WorldState", "WorldStateBuilder",
+    "ContextManager", "GoalManager",
+    "ReasoningEngine", "format_answer", "InferenceEngine",
+    "Planner", "PlanStep", "Simulator",
 ]
