@@ -169,6 +169,72 @@ class WorldGraph:
             node.examples.append(example)
         return node
 
+    def add_concept(self, name: str, canonical_name: str = "",
+                     vector: np.ndarray | None = None,
+                     confidence: float = 0.5):
+        """Add a concept node directly (for testing).
+
+        If no vector is provided, a default 16-dim hash-based embedding
+        is created from the name so that the node is usable for similarity.
+        """
+        key = name.lower().strip()
+        if key in self._surface_index:
+            return self.nodes[self._surface_index[key]]
+        if vector is None:
+            dim = 16
+            vec = np.zeros(dim)
+            for ch in name:
+                vec[hash(ch) % dim] += 1.0
+            norm = np.linalg.norm(vec)
+            vector = vec / norm if norm > 0 else vec
+        cid = str(uuid.uuid4())
+        now = time.time()
+        node = ConceptNode(
+            id=cid,
+            canonical_name=canonical_name or name,
+            aliases=[name],
+            vector=vector,
+            confidence=confidence,
+            first_seen=now,
+            last_seen=now,
+        )
+        self.nodes[cid] = node
+        self._add_alias(key, cid)
+        return node
+
+    def add_relation(self, source: str, predicate: str, target: str,
+                     confidence: float = 0.5):
+        """Add a relation edge directly (for testing)."""
+        src = self.get_concept(source)
+        tgt = self.get_concept(target)
+        if src is None or tgt is None:
+            raise KeyError(f"Concept not found: source={source}, target={target}")
+        eid = len(self.edges)
+        now = time.time()
+        edge = RelationEdge(
+            source_id=src.id,
+            predicate=predicate,
+            target_id=tgt.id,
+            confidence=confidence,
+            support_count=1,
+            first_seen=now,
+            last_seen=now,
+            last_confirmed=now,
+        )
+        self.edges.append(edge)
+        if src.id not in self.adjacency:
+            self.adjacency[src.id] = {}
+        if predicate not in self.adjacency[src.id]:
+            self.adjacency[src.id][predicate] = []
+        self.adjacency[src.id][predicate].append(eid)
+        if tgt.id not in self.adjacency:
+            self.adjacency[tgt.id] = {}
+        rev = f"~{predicate}"
+        if rev not in self.adjacency[tgt.id]:
+            self.adjacency[tgt.id][rev] = []
+        self.adjacency[tgt.id][rev].append(eid)
+        return edge
+
     def get_concept(self, name: str) -> ConceptNode | None:
         key = name.lower().strip()
         cid = self._surface_index.get(key)
