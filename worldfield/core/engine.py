@@ -21,6 +21,10 @@ from .world_state import WorldStateBuilder
 from ..reasoning.inference import InferenceEngine
 from ..nlg import Decoder
 from ..learning import LearningEngine
+from .context import ContextManager
+from .goals import GoalManager
+from ..planning import Planner
+from ..simulation import Simulator
 
 class Engine:
     def __init__(self, config: Config | None = None):
@@ -63,6 +67,18 @@ class Engine:
             model_name=self.cfg.nlg_model,
             device=self.device,
         )
+
+        # Context layer (conversational memory)
+        self.context = ContextManager()
+
+        # Goal layer (objectives and progress)
+        self.goals = GoalManager()
+
+        # Planner (decompose goals into steps)
+        self.planner = Planner()
+
+        # Simulator (predict possible futures)
+        self.simulator = Simulator(graph=self.graph)
 
         # Continuous learning engine
         self.learner = LearningEngine(
@@ -191,14 +207,47 @@ class Engine:
             active_concepts, resolved_rel
         )
         timings["world_state"] = (time.perf_counter() - t_ws) * 1000
+        t_ctx = time.perf_counter()
+
+        # 5. Context layer — update conversational context
+        self.context.update(
+            user_input=text,
+            entities=concept_names,
+            activated=active_concepts,
+        )
+        context_summary = self.context.get_context_summary()
+        timings["context"] = (time.perf_counter() - t_ctx) * 1000
+        t_goal = time.perf_counter()
+
+        # 6. Goal layer — check current objectives
+        goals_summary = self.goals.get_summary()
+        timings["goals"] = (time.perf_counter() - t_goal) * 1000
+        t_plan = time.perf_counter()
+
+        # 7. Planning — decompose goals (if any active goals)
+        plan_summary = {}
+        active_goals = self.goals.get_active_goals()
+        if active_goals:
+            goal_desc = active_goals[0].description
+            plan_steps = self.planner.plan(goal_desc, world_state.to_dict())
+            plan_summary = self.planner.get_summary()
+        timings["planning"] = (time.perf_counter() - t_plan) * 1000
         t_inf = time.perf_counter()
 
-        # 5. Run inference over the world state
+        # 8. Run inference over the world state
         inference_result = self.inference_engine.reason(world_state)
         timings["reasoning"] = (time.perf_counter() - t_inf) * 1000
+        t_sim = time.perf_counter()
+
+        # 9. Simulation — predict possible futures
+        sim_outcomes = self.simulator.simulate(
+            world_state=world_state.to_dict(),
+        )
+        timings["simulation"] = (time.perf_counter() - t_sim) * 1000
         t_nlg = time.perf_counter()
 
-        # 6. Generate natural-language response
+        # 10. Generate natural-language response (with context + goals)
+        context_block = self.context.format_context_block()
         generated = self.decoder.generate(
             world_state=world_state.to_dict(),
             inference_result=inference_result.to_dict(),
@@ -207,7 +256,7 @@ class Engine:
         timings["language"] = (time.perf_counter() - t_nlg) * 1000
         t2 = time.perf_counter()
 
-        # 7. Record graph state before update
+        # 11. Record graph state before update
         pre_concepts = self.graph.n_concepts
         pre_relations = self.graph.n_relations
 
@@ -270,6 +319,10 @@ class Engine:
             "activation_active": active_concepts,
             "activation_working_set": working_set,
             "world_state": world_state.to_dict(),
+            "context": context_summary,
+            "goals": goals_summary,
+            "plan": plan_summary,
+            "simulation": sim_outcomes,
             "inference_result": inference_result.to_dict(),
             "generated_text": generated,
             "graph_query": related_concepts,
@@ -325,10 +378,24 @@ class Engine:
 
         ws_img = self.world_builder.from_activations(active_img, [])
         timings["world_state"] = (time.perf_counter() - t3) * 1000
+        t_ctx = time.perf_counter()
+
+        self.context.update(
+            user_input=f"[image] {source}",
+            entities=[name],
+            activated=active_img,
+        )
+        timings["context"] = (time.perf_counter() - t_ctx) * 1000
         t_inf = time.perf_counter()
 
         inference_result = self.inference_engine.reason(ws_img)
         timings["reasoning"] = (time.perf_counter() - t_inf) * 1000
+        t_sim = time.perf_counter()
+
+        sim_outcomes = self.simulator.simulate(
+            world_state=ws_img.to_dict(),
+        )
+        timings["simulation"] = (time.perf_counter() - t_sim) * 1000
         t_nlg = time.perf_counter()
 
         img_generated = self.decoder.generate(
@@ -358,6 +425,10 @@ class Engine:
             "activation_active": active_img,
             "activation_working_set": self.activator.get_working_set(k=10),
             "world_state": ws_img.to_dict(),
+            "context": self.context.get_context_summary(),
+            "goals": self.goals.get_summary(),
+            "plan": {},
+            "simulation": sim_outcomes,
             "inference_result": inference_result.to_dict(),
             "generated_text": img_generated,
             "slot_concepts": [name],
@@ -433,6 +504,8 @@ class Engine:
             self.persistence.save_slots(self.slots.state_dict())
         self.persistence.save_world_graph(self.graph.state_dict())
         self.persistence.save_activation(self.activator.state_dict())
+        self.persistence.save_extra("context", self.context.state_dict())
+        self.persistence.save_extra("goals", self.goals.state_dict())
         extra = {
             "pmi_ids": getattr(self, "_pmi_ids", {}),
             "pmi_next": getattr(self, "_pmi_next", 0),
@@ -449,6 +522,12 @@ class Engine:
         act_sd = self.persistence.load_activation()
         if act_sd:
             self.activator.load_state_dict(act_sd)
+        ctx_sd = self.persistence.load_extra("context")
+        if ctx_sd:
+            self.context.load_state_dict(ctx_sd)
+        goals_sd = self.persistence.load_extra("goals")
+        if goals_sd:
+            self.goals.load_state_dict(goals_sd)
         pmi_sd = self.persistence.load_pmi_graph()
         if pmi_sd:
             self.pmi.load_state_dict(pmi_sd)

@@ -118,6 +118,65 @@ class Turn:
             header = f"WORLD MODEL UPDATE ({t:.0f}ms)" if t else "WORLD MODEL UPDATE"
             self.sections.append((header, _render_ansi(Text("\n".join(lines2), style="blue"))))
 
+        # -- CONTEXT --
+        ctx = eng.get("context", {})
+        if ctx:
+            ctx_lines = [
+                f"  Topic: {ctx.get('topic', 'none')}",
+                f"  Turn: {ctx.get('turn', 0)}, "
+                f"Recent concepts: {len(ctx.get('recent_concepts', []))}",
+                f"  History turns: {ctx.get('history_length', 0)}",
+            ]
+            t_ctx = timings.get("context", 0)
+            header = f"CONTEXT ({t_ctx:.0f}ms)" if t_ctx else "CONTEXT"
+            self.sections.append((header, _render_ansi(Text("\n".join(ctx_lines), style="cyan"))))
+
+        # -- GOALS --
+        gls = eng.get("goals", {})
+        if gls and gls.get("n_goals", 0) > 0:
+            goal_lines = [
+                f"  Total: {gls.get('n_goals', 0)}",
+                f"  Active: {', '.join(gls.get('active', [])[:3]) or 'none'}",
+            ]
+            completed = gls.get("completed", [])
+            if completed:
+                goal_lines.append(f"  Completed: {', '.join(completed[:2])}")
+            blocked = gls.get("blocked", [])
+            if blocked:
+                goal_lines.append(f"  Blocked: {', '.join(b['goal'] for b in blocked[:2])}")
+            current_task = gls.get("current_task", "")
+            if current_task:
+                goal_lines.append(f"  Current: {current_task}")
+            t_goal = timings.get("goals", 0)
+            header = f"GOALS ({t_goal:.0f}ms)" if t_goal else "GOALS"
+            self.sections.append((header, _render_ansi(Text("\n".join(goal_lines), style="green"))))
+
+        # -- PLANNING --
+        plan = eng.get("plan", {})
+        if plan and plan.get("steps"):
+            plan_lines = [f"  Steps: {plan.get('n_steps', 0)}"]
+            for step in plan.get("steps", [])[:4]:
+                action = step.get("action", "?")
+                status = step.get("status", "pending")
+                plan_lines.append(f"    [{status}] {action}")
+            if plan.get("failed_steps", 0) > 0:
+                plan_lines.append(f"  ⚠ {plan['failed_steps']} failed step(s) — replanning")
+            t_plan = timings.get("planning", 0)
+            header = f"PLANNING ({t_plan:.0f}ms)" if t_plan else "PLANNING"
+            self.sections.append((header, _render_ansi(Text("\n".join(plan_lines), style="yellow"))))
+
+        # -- SIMULATION --
+        sim = eng.get("simulation", {})
+        if sim and sim.get("outcomes"):
+            sim_lines = []
+            for outcome in sim.get("outcomes", [])[:4]:
+                action = outcome.get("action", "?")
+                prob = outcome.get("probability", 0)
+                sim_lines.append(f"  {action}  ({prob:.2f})")
+            t_sim = timings.get("simulation", 0)
+            header = f"SIMULATION ({t_sim:.0f}ms)" if t_sim else "SIMULATION"
+            self.sections.append((header, _render_ansi(Text("\n".join(sim_lines), style="blue"))))
+
         # -- REASONING --
         inf = eng.get("inference_result", {})
         chain_lines = []

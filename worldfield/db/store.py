@@ -69,6 +69,21 @@ class Persistence:
         except (FileNotFoundError, json.JSONDecodeError):
             return None
 
+    # ── Generic extra state ──────────────────────────────────────────
+
+    def save_extra(self, name: str, state_dict: dict):
+        self.db_path.mkdir(parents=True, exist_ok=True)
+        with open(self.db_path / f"{name}.json", "w") as f:
+            json.dump(state_dict, f, indent=2)
+
+    def load_extra(self, name: str) -> dict | None:
+        p = self.db_path / f"{name}.json"
+        try:
+            with open(p) as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            return None
+
     # ── PMI Graph ─────────────────────────────────────────────────────
 
     def save_pmi_graph(self, state_dict: dict):
