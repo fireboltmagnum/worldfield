@@ -151,7 +151,7 @@ class WorldGraph:
         best = None
         best_sim = SIMILARITY_THRESHOLD
         for node in self.nodes.values():
-            if node.vector is not None:
+            if node.vector is not None and node.vector.shape == vector.shape:
                 sim = cosine_sim(vector, node.vector)
                 if sim > best_sim:
                     best_sim = sim

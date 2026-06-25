@@ -281,7 +281,7 @@ class Engine:
         )
         ws_dict = world_state.to_dict()
         horizon.world_state = {
-            c: 1.0 for c in active_concepts
+            name: level for name, level in active_concepts
         } if isinstance(ws_dict, dict) else {}
         self.context_window.store_world_state(
             concepts=horizon.world_state,
@@ -420,6 +420,7 @@ class Engine:
             "context_window": self.context_window.get_context_summary(),
             "attention": attention_result,
             "memory_retrieval": retrieval_result,
+            "context_horizon": horizon.to_dict(),
             "context": context_summary,
             "goals": goals_summary,
             "plan": plan_summary,
@@ -444,6 +445,9 @@ class Engine:
              "loser_new": r.loser_new_conf}
             for r in resolutions
         ]
+
+        # Increment turn counter
+        self.context_window.increment_turn()
 
         # Decay activation for next turn
         self.activator.tick()

@@ -47,3 +47,8 @@ include = ["worldfield*"]
 
 [tool.setuptools.package-data]
 worldfield = ["py.typed"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

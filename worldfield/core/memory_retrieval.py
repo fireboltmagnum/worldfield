@@ -77,6 +77,8 @@ class MemoryRetrieval:
             # attention_score: max cosine sim to any attended concept
             max_sim = 0.0
             for av in attended_vecs:
+                if av.shape != node.vector.shape:
+                    continue
                 sim = float(np.dot(av, node.vector) /
                             (np.linalg.norm(av) * np.linalg.norm(node.vector) + 1e-12))
                 if sim > max_sim:
