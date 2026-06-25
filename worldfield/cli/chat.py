@@ -119,14 +119,25 @@ class Turn:
             self.sections.append((header, _render_ansi(Text("\n".join(lines2), style="blue"))))
 
         # -- REASONING --
-        answer = eng.get("_answer", None)
+        inf = eng.get("inference_result", {})
         chain_lines = []
-        if answer and answer.results:
-            for r2 in answer.results[:3]:
-                chain_lines.append(f"  {r2.subject} -[{r2.predicate}]? {r2.object}  ({r2.confidence:.2f})")
-        if chain_lines:
-            pt = answer.processing_time if answer else 0
-            header = f"REASONING ({pt*1000:.0f}ms)" if pt else "REASONING"
+        if inf:
+            inferences = inf.get("inferences", [])
+            contradictions = inf.get("contradictions", [])
+            for inv in inferences[:4]:
+                conf = inv.get("confidence", 0)
+                src = inv.get("source", "?")
+                pred = inv.get("predicate", "?")
+                tgt = inv.get("target", "?")
+                chain_lines.append(f"  {src} -[{pred}]→ {tgt}  ({conf:.2f})")
+                steps = inv.get("steps", [])
+                if steps:
+                    chain_lines.append(f"    ∵ {steps[0].get('premise', '')}" if isinstance(steps[0], dict) else "")
+            for c in contradictions[:2]:
+                desc = c.get("description", "")
+                chain_lines.append(f"  ⚠ {desc}")
+            pt = inf.get("processing_time_ms", 0)
+            header = f"REASONING ({pt:.0f}ms)" if pt else "REASONING"
             self.sections.append((header, _render_ansi(Text("\n".join(chain_lines), style="magenta"))))
         else:
             self.sections.append(("REASONING", _render_ansi(Text("No new inferences.", style="dim white"))))

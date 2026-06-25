@@ -18,6 +18,7 @@ from .graph import PMIGraph
 from .world_graph import WorldGraph
 from .activation import ActivationEngine
 from .world_state import WorldStateBuilder
+from ..reasoning.inference import InferenceEngine
 
 class Engine:
     def __init__(self, config: Config | None = None):
@@ -47,6 +48,12 @@ class Engine:
 
         # World state builder (current reality model)
         self.world_builder = WorldStateBuilder(graph=self.graph)
+
+        # Inference engine (reasoning over world state)
+        self.inference_engine = InferenceEngine(
+            graph=self.graph,
+            max_inheritance_depth=self.cfg.inference_depth,
+        )
 
         # Secondary association layer
         self.pmi = PMIGraph(
@@ -165,9 +172,14 @@ class Engine:
             active_concepts, resolved_rel
         )
         timings["world_state"] = (time.perf_counter() - t_ws) * 1000
+        t_inf = time.perf_counter()
+
+        # 5. Run inference over the world state
+        inference_result = self.inference_engine.reason(world_state)
+        timings["reasoning"] = (time.perf_counter() - t_inf) * 1000
         t2 = time.perf_counter()
 
-        # 5. Record graph state before update
+        # 6. Record graph state before update
         pre_concepts = self.graph.n_concepts
         pre_relations = self.graph.n_relations
 
@@ -230,6 +242,7 @@ class Engine:
             "activation_active": active_concepts,
             "activation_working_set": working_set,
             "world_state": world_state.to_dict(),
+            "inference_result": inference_result.to_dict(),
             "graph_query": related_concepts,
             "total_concepts": self.graph.n_concepts,
             "total_relations": self.graph.n_relations,
@@ -270,6 +283,10 @@ class Engine:
 
         ws_img = self.world_builder.from_activations(active_img, [])
         timings["world_state"] = (time.perf_counter() - t3) * 1000
+        t_inf = time.perf_counter()
+
+        inference_result = self.inference_engine.reason(ws_img)
+        timings["reasoning"] = (time.perf_counter() - t_inf) * 1000
 
         obs_id = self.graph.record_observation(
             text=f"[image] {source}",
@@ -292,6 +309,7 @@ class Engine:
             "activation_active": active_img,
             "activation_working_set": self.activator.get_working_set(k=10),
             "world_state": ws_img.to_dict(),
+            "inference_result": inference_result.to_dict(),
             "slot_concepts": [name],
             "slot_state_active": self.slots.active_count() if self.slots else 0,
             "total_concepts": self.graph.n_concepts,

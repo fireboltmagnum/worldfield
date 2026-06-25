@@ -41,5 +41,8 @@ class Config:
     activation_spread: float = 0.5
     activation_hops: int = 2
 
+    # Inference engine
+    inference_depth: int = 3
+
     # Training
     temperature: float = 0.07
