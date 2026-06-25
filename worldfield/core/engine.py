@@ -23,6 +23,10 @@ from ..nlg import Decoder
 from ..learning import LearningEngine
 from .context import ContextManager
 from .goals import GoalManager
+from .context_window import ContextWindow
+from .concept_attention import ConceptAttention
+from .memory_retrieval import MemoryRetrieval
+from .context_horizon import ContextHorizon
 from ..planning import Planner
 from ..simulation import Simulator
 
@@ -73,6 +77,25 @@ class Engine:
 
         # Goal layer (objectives and progress)
         self.goals = GoalManager()
+
+        # Context Window (working memory)
+        self.context_window = ContextWindow(
+            max_events=self.cfg.cw_max_events,
+            max_world_states=self.cfg.cw_max_world_states,
+            max_entities=self.cfg.cw_max_entities,
+            max_topic_depth=self.cfg.cw_max_topic_depth,
+            max_references=self.cfg.cw_max_references,
+            max_deltas=self.cfg.cw_max_deltas,
+            max_reasoning=self.cfg.cw_max_reasoning,
+            max_simulation=self.cfg.cw_max_simulation,
+            max_attention_history=self.cfg.cw_max_attention_history,
+        )
+
+        # Concept Attention (hierarchical + recursive)
+        self.attention = None  # lazy init in process() after text_encoder is ready
+
+        # Memory Retrieval (score-based)
+        self.memory_retrieval = None  # lazy init in process() after text_encoder is ready
 
         # Planner (decompose goals into steps)
         self.planner = Planner()
@@ -191,25 +214,83 @@ class Engine:
             text, concepts, relations, modality="text", source="user_input"
         )
         timings["resolve"] = (time.perf_counter() - t1) * 1000
+        t_cw = time.perf_counter()
+        concept_names = [c["name"] for c in resolved_conc]
+
+        # 3. Context Window — ingest current event
+        self.context_window.ingest_event("text", text, concept_names)
+        timings["context_window"] = (time.perf_counter() - t_cw) * 1000
+        t_attn = time.perf_counter()
+
+        # 4. Recursive Hierarchical Concept Attention
+        if self.attention is None:
+            self.attention = ConceptAttention(
+                graph=self.graph,
+                encoder=self.text_encoder.encode,
+                top_k=self.cfg.attention_top_k,
+                max_candidates=self.cfg.attention_max_candidates,
+                goal_similarity_threshold=self.cfg.attention_goal_similarity_threshold,
+                passes=self.cfg.attention_passes,
+            )
+        attention_result = self.attention.hierarchical_attend(
+            active_goals=self.goals.get_active_goals(),
+            context_window=self.context_window,
+            current_concepts=concept_names,
+        )
+        attended_names = [s.name for s in attention_result.attended]
+        timings["attention"] = (time.perf_counter() - t_attn) * 1000
+        t_mr = time.perf_counter()
+
+        # 5. Score-based Memory Retrieval
+        if self.memory_retrieval is None:
+            self.memory_retrieval = MemoryRetrieval(
+                graph=self.graph,
+                encoder=self.text_encoder.encode,
+                max_retrieved=self.cfg.mr_max_retrieved,
+                max_candidates=self.cfg.mr_max_candidates,
+            )
+        retrieval_result = self.memory_retrieval.fetch(attended_names)
+        timings["memory_retrieval"] = (time.perf_counter() - t_mr) * 1000
+        t_hz = time.perf_counter()
+
+        # 6. Context Horizon — consolidate everything for this cycle
+        world_state_dict = {}
+        horizon = ContextHorizon(
+            current_input=concept_names,
+            attended_concepts=attention_result.attended,
+            retrieved_memory=retrieval_result,
+            world_state=world_state_dict,
+            active_goals=self.goals.get_active_goals(),
+            recent_reasoning=list(self.context_window.recent_reasoning)[-3:],
+        )
+        horizon_concepts = list(horizon.get_all_concepts())
+        timings["horizon"] = (time.perf_counter() - t_hz) * 1000
         t_act = time.perf_counter()
 
-        # 3. Activate concepts and spread to related
-        concept_names = [c["name"] for c in resolved_conc]
-        self.activator.trigger(concept_names)
+        # 7. Activate on Context Horizon concepts only (not full graph)
+        self.activator.trigger(horizon_concepts[:20])  # bounded
         self.activator.spread()
         active_concepts = self.activator.get_active(threshold=0.05)
         working_set = self.activator.get_working_set(k=10)
         timings["activation"] = (time.perf_counter() - t_act) * 1000
         t_ws = time.perf_counter()
 
-        # 4. Build world state (current reality model)
+        # 8. Build world state
         world_state = self.world_builder.from_activations(
             active_concepts, resolved_rel
+        )
+        ws_dict = world_state.to_dict()
+        horizon.world_state = {
+            c: 1.0 for c in active_concepts
+        } if isinstance(ws_dict, dict) else {}
+        self.context_window.store_world_state(
+            concepts=horizon.world_state,
+            relations=[(r["source"], r["predicate"], r["target"]) for r in resolved_rel],
         )
         timings["world_state"] = (time.perf_counter() - t_ws) * 1000
         t_ctx = time.perf_counter()
 
-        # 5. Context layer — update conversational context
+        # 9. Context layer — update conversational context
         self.context.update(
             user_input=text,
             entities=concept_names,
@@ -244,6 +325,23 @@ class Engine:
             world_state=world_state.to_dict(),
         )
         timings["simulation"] = (time.perf_counter() - t_sim) * 1000
+
+        # Context Window — post-reasoning update
+        for out in sim_outcomes:
+            if isinstance(out, dict):
+                self.context_window.add_simulation(
+                    outcome=out.get("action", str(out)),
+                    concepts=out.get("concepts", []),
+                    probability=out.get("probability", 0.0),
+                )
+        self.context_window.add_attention_snapshot(
+            attended=[(s.name, s.score) for s in attention_result.attended],
+            suppressed=[(s.name, s.score) for s in attention_result.suppressed],
+            weights=attention_result.weights,
+            task_mode=attention_result.task_mode,
+            n_candidates=attention_result.n_candidates,
+        )
+
         t_nlg = time.perf_counter()
 
         # 10. Generate natural-language response (with context + goals)
@@ -319,6 +417,9 @@ class Engine:
             "activation_active": active_concepts,
             "activation_working_set": working_set,
             "world_state": world_state.to_dict(),
+            "context_window": self.context_window.get_context_summary(),
+            "attention": attention_result,
+            "memory_retrieval": retrieval_result,
             "context": context_summary,
             "goals": goals_summary,
             "plan": plan_summary,
@@ -506,6 +607,7 @@ class Engine:
         self.persistence.save_activation(self.activator.state_dict())
         self.persistence.save_extra("context", self.context.state_dict())
         self.persistence.save_extra("goals", self.goals.state_dict())
+        self.persistence.save_extra("context_window", self.context_window.state_dict())
         extra = {
             "pmi_ids": getattr(self, "_pmi_ids", {}),
             "pmi_next": getattr(self, "_pmi_next", 0),
@@ -528,6 +630,9 @@ class Engine:
         goals_sd = self.persistence.load_extra("goals")
         if goals_sd:
             self.goals.load_state_dict(goals_sd)
+        cw_sd = self.persistence.load_extra("context_window")
+        if cw_sd:
+            self.context_window.load_state_dict(cw_sd)
         pmi_sd = self.persistence.load_pmi_graph()
         if pmi_sd:
             self.pmi.load_state_dict(pmi_sd)
