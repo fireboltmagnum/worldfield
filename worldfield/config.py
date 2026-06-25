@@ -55,5 +55,34 @@ class Config:
     learning_prune_support: int = 1
     learning_prune_interval: int = 10
 
+    # Context Window
+    cw_max_events: int = 20
+    cw_max_world_states: int = 10
+    cw_max_entities: int = 30
+    cw_max_topic_depth: int = 5
+    cw_max_references: int = 10
+    cw_max_deltas: int = 10
+    cw_max_reasoning: int = 10
+    cw_max_simulation: int = 5
+    cw_max_attention_history: int = 20
+
+    # Concept Attention (hierarchical)
+    attention_top_k: int = 15
+    attention_max_candidates: int = 50
+    attention_goal_similarity_threshold: float = 0.3
+    attention_weight_recency: float = 1.0
+    attention_weight_relevance: float = 1.0
+    attention_weight_goal: float = 1.0
+    attention_weight_centrality: float = 0.5
+    attention_weight_activation: float = 1.5
+    attention_weight_confidence: float = 0.5
+
+    # Concept Attention (hierarchical + recursive)
+    attention_passes: int = 3
+
+    # Memory Retrieval (score-based)
+    mr_max_retrieved: int = 30
+    mr_max_candidates: int = 200
+
     # Training
     temperature: float = 0.07

@@ -10,6 +10,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+import numpy as np
+
 
 @dataclass
 class Goal:
@@ -43,6 +45,7 @@ class Goal:
     progress: float = 0.0
     created_at: float = 0.0
     completed_at: float | None = None
+    embedding: np.ndarray | None = None
 
     def __hash__(self) -> int:
         return id(self)
@@ -67,13 +70,14 @@ class GoalManager:
     # ── Public API ─────────────────────────────────────────────────────
 
     def add_goal(
-        self, description: str, priority: int = 0
+        self, description: str, priority: int = 0, embedding: np.ndarray | None = None
     ) -> Goal:
         """Add a new top-level goal."""
         goal = Goal(
             description=description,
             priority=priority,
             created_at=time.time(),
+            embedding=embedding,
         )
         self.goals.append(goal)
         self.goals.sort(key=lambda g: -g.priority)
