@@ -1,2 +1,154 @@
-"""CLI chat helpers."""
+"""CLI output store and section rendering for the cognitive pipeline display."""
 from __future__ import annotations
+
+from typing import Any
+
+from rich.console import Console
+from rich.text import Text
+from prompt_toolkit.formatted_text import ANSI as PTK_ANSI
+
+_rich_console = Console(color_system="truecolor", force_terminal=True, width=80)
+
+
+def _render_ansi(renderable) -> str:
+    with _rich_console.capture() as cap:
+        _rich_console.print(renderable)
+    return cap.get()
+
+
+class Turn:
+    """One user input + engine response, rendered into sections."""
+
+    def __init__(self, user_text: str, engine_result: dict[str, Any]):
+        self.user_text = user_text
+        self.engine = engine_result
+        self.sections: list[tuple[str, str]] = []  # (section_name, ansi_text)
+        self._build()
+
+    def _build(self):
+        eng = self.engine
+        timings = eng.get("timings", {})
+
+        # -- INPUT --
+        self.sections.append(("INPUT", _render_ansi(Text(eng.get("text", ""), style="white"))))
+
+        # -- UNDERSTANDING --
+        concepts = eng.get("concepts_extracted", [])
+        rels = eng.get("extracted_relations_raw", [])
+        if concepts:
+            lines = [f"Concepts:  {', '.join(concepts)}"]
+            for r in rels[:5]:
+                src = r.get("source", "?")
+                pred = r.get("predicate", "?")
+                tgt = r.get("target", "?")
+                lines.append(f"           {src} -[{pred}]? {tgt}")
+            best_conf = max((r.get("confidence", 0) for r in rels), default=0.0)
+            lines.append(f"Confidence: {best_conf:.2f}")
+            t = timings.get("understanding", 0)
+            header = f"UNDERSTANDING ({t:.0f}ms)" if t else "UNDERSTANDING"
+            self.sections.append((header, _render_ansi(Text("\n".join(lines), style="cyan"))))
+
+        # -- ACTIVATION FLOW --
+        related = eng.get("graph_query", {})
+        if related:
+            rows = []
+            all_entries = []
+            for concept, entries in related.items():
+                conf = max(e.get("confidence", 0) for e in entries)
+                all_entries.append((concept, conf))
+            all_entries.sort(key=lambda x: -x[1])
+            bar_width = 16
+            for name, conf in all_entries[:8]:
+                filled = int(conf * bar_width)
+                bar = "█" * filled + "░" * (bar_width - filled)
+                rows.append(f"  {name:<12s} {bar}  {conf:.2f}")
+            t = timings.get("graph_query", 0)
+            header = f"ACTIVATION FLOW ({t:.0f}ms)" if t else "ACTIVATION FLOW"
+            self.sections.append((header, _render_ansi(Text("\n".join(rows), style="green"))))
+
+        # -- WORLD STATE --
+        state_lines = []
+        if concepts:
+            state_lines.append("Objects:")
+            for c in concepts:
+                rel_entries = related.get(c, [])
+                conf = max((e.get("confidence", 0) for e in rel_entries), default=0.0) if rel_entries else 0.0
+                state_lines.append(f"  {c:<16s} confidence: {conf:.2f}")
+            state_lines.append("")
+            state_lines.append("Relations:")
+            for r in rels[:6]:
+                src = r.get("source", "?")
+                pred = r.get("predicate", "?")
+                tgt = r.get("target", "?")
+                conf = r.get("confidence", 0.0)
+                neg = "  (alternative)" if r.get("negated") else ""
+                state_lines.append(f"  {src} -[{pred}]? {tgt}  {conf:.2f}{neg}")
+            t = timings.get("world_update", 0)
+            header = f"WORLD STATE ({t:.0f}ms)" if t else "WORLD STATE"
+            self.sections.append((header, _render_ansi(Text("\n".join(state_lines), style="yellow"))))
+
+        # -- WORLD MODEL UPDATE --
+        pre_c, pre_r = eng.get("graph_pre_state", (0, 0))
+        post_c = eng.get("total_concepts", 0)
+        post_r = eng.get("total_relations", 0)
+        new_c = post_c - pre_c
+        new_r = post_r - pre_r
+        if new_c > 0 or new_r > 0 or rels:
+            lines2 = []
+            for r in rels[:5]:
+                src = r.get("source", "?")
+                pred = r.get("predicate", "?")
+                tgt = r.get("target", "?")
+                lines2.append(f"  {src} -[{pred}]? {tgt}   (new)")
+            if not lines2 and (new_c > 0 or new_r > 0):
+                lines2.append(f"  +{new_c} concepts, +{new_r} relations stored")
+            t = timings.get("world_update", 0)
+            header = f"WORLD MODEL UPDATE ({t:.0f}ms)" if t else "WORLD MODEL UPDATE"
+            self.sections.append((header, _render_ansi(Text("\n".join(lines2), style="blue"))))
+
+        # -- REASONING --
+        answer = eng.get("_answer", None)
+        chain_lines = []
+        if answer and answer.results:
+            for r2 in answer.results[:3]:
+                chain_lines.append(f"  {r2.subject} -[{r2.predicate}]? {r2.object}  ({r2.confidence:.2f})")
+        if chain_lines:
+            pt = answer.processing_time if answer else 0
+            header = f"REASONING ({pt*1000:.0f}ms)" if pt else "REASONING"
+            self.sections.append((header, _render_ansi(Text("\n".join(chain_lines), style="magenta"))))
+        else:
+            self.sections.append(("REASONING", _render_ansi(Text("No new inferences.", style="dim white"))))
+
+        # -- MEMORY --
+        mem_lines = [f"Graph: {post_c} concepts, {post_r} relations"]
+        if new_c > 0 or new_r > 0:
+            mem_lines.append(f"This session: +{new_c} concepts, +{new_r} relations")
+        mem_lines.append(f"Last learned: \"{eng.get('text', '')[:60]}\"")
+        total_t = sum(timings.values())
+        header = f"MEMORY ({total_t:.0f}ms total)" if total_t else "MEMORY"
+        self.sections.append((header, _render_ansi(Text("\n".join(mem_lines), style="dim white"))))
+
+
+class OutputStore:
+    """Stores conversation turns and produces formatted text for the output pane."""
+
+    def __init__(self):
+        self.turns: list[Turn] = []
+
+    def add_turn(self, user_text: str, engine_result: dict[str, Any]) -> Turn:
+        turn = Turn(user_text, engine_result)
+        self.turns.append(turn)
+        return turn
+
+    def get_formatted_text(self):
+        """Return formatted text for prompt_toolkit."""
+        parts: list[str] = []
+        for i, turn in enumerate(self.turns):
+            if i > 0:
+                parts.append("\n")
+            parts.append(f">>> {turn.user_text}\n")
+            for section_name, ansi_text in turn.sections:
+                sep_len = max(0, 70 - len(section_name) - 8)
+                parts.append(f"━━━━━━ {section_name} ━━━━━━\n")
+                parts.append(ansi_text + "\n")
+        return PTK_ANSI("".join(parts))
