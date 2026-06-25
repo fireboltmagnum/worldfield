@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import threading
 
-from prompt_toolkit import Application, get_app
+from prompt_toolkit import Application
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.completion import WordCompleter
@@ -90,8 +90,7 @@ class WorldFieldApp:
                 self.output_control.invalidate()
                 self.header_control.invalidate()
             else:
-                app = get_app()
-                app.create_background_task(self._process_async(text))
+                event.app.create_background_task(self._process_async(text))
 
         @kb.add("c-c")
         def _ctrl_c(event):
@@ -300,13 +299,25 @@ class WorldFieldApp:
 
 def run_cli():
     """Entry point — called from __main__.py."""
-    # Defer heavy imports so starting the CLI is fast
+    import sys
+
+    def _status(msg):
+        sys.stdout.write("\r\x1b[K  " + msg)
+        sys.stdout.flush()
+
+    _status("Importing packages...")
     from ..config import Config
     from ..core.engine import Engine
     from ..reasoning import ReasoningEngine
 
     cfg = Config()
+
+    _status("Building cognitive pipeline...")
     engine = Engine(cfg)
+
+    _status("Loading reasoning engine...")
     reasoner = ReasoningEngine(engine.graph)
+
+    # TUI clears screen on start, so no need to clean up
     wf = WorldFieldApp(cfg, engine, reasoner)
     wf.run()
