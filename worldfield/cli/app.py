@@ -1,6 +1,9 @@
 """WorldField cognitive pipeline TUI — prompt_toolkit Application."""
 from __future__ import annotations
 
+import asyncio
+import threading
+
 from prompt_toolkit import Application
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.history import FileHistory
@@ -14,7 +17,7 @@ from prompt_toolkit.formatted_text import ANSI
 from ..core.engine import Engine
 from ..config import Config
 from ..reasoning import ReasoningEngine
-from .chat import OutputStore
+from .chat import OutputStore, Turn
 from .dashboard import render_header
 
 _command_completer = WordCompleter([
@@ -37,6 +40,10 @@ class WorldFieldApp:
         self.reasoner = ReasoningEngine(self.engine.graph)
         self.store = OutputStore()
         self.session_additions = [0, 0]  # [concepts, relations]
+        self._processing = False
+
+        # Pre-load slow models in background so first interaction is faster
+        threading.Thread(target=self._preload_models, daemon=True).start()
 
         # -- Input buffer --
         self.input_buffer = Buffer(
@@ -70,8 +77,20 @@ class WorldFieldApp:
         kb = KeyBindings()
 
         @kb.add("enter")
-        def _enter(event):
-            event.current_buffer.validate_and_handle()
+        async def _enter(event):
+            buffer = event.current_buffer
+            text = buffer.text.strip()
+            if not text or self._processing:
+                return
+            buffer.reset()
+
+            if text.startswith("/"):
+                self._handle_command(text)
+                self.output_control.invalidate()
+                self.header_control.invalidate()
+            else:
+                app = get_app()
+                app.create_background_task(self._process_async(text))
 
         @kb.add("c-c")
         def _ctrl_c(event):
@@ -92,25 +111,77 @@ class WorldFieldApp:
             mouse_support=True,
         )
 
+    def _preload_models(self):
+        """Eagerly load slow models so first input doesn't block."""
+        try:
+            _ = self.engine.text_encoder
+            _ = self.engine.nlp
+        except Exception:
+            pass
+
     def _get_header_text(self):
         return ANSI(render_header(self.engine, tuple(self.session_additions)))
 
     def _get_output_text(self):
         return self.store.get_formatted_text()
 
-    def _on_submit(self, buffer: Buffer) -> bool:
-        text = buffer.text.strip()
-        if not text:
-            return False
-        buffer.reset()
+    def _placeholder_turn_dict(self, text: str,
+                                label: str = "") -> dict:
+        t = self.engine.graph.n_concepts
+        r = self.engine.graph.n_relations
+        return {
+            "text": label or text,
+            "concepts_extracted": [],
+            "extracted_concepts_raw": [],
+            "extracted_relations_raw": [],
+            "graph_query": {},
+            "timings": {},
+            "total_concepts": t,
+            "total_relations": r,
+            "graph_pre_state": (t, r),
+        }
 
-        if text.startswith("/"):
-            self._handle_command(text)
-        else:
-            self._handle_input(text)
+    async def _process_async(self, text: str):
+        """Run engine processing in a thread pool (non-blocking)."""
+        self._processing = True
+        loop = asyncio.get_event_loop()
 
+        # Show processing indicator immediately
+        self.store.add_turn(text, self._placeholder_turn_dict(
+            text, "Processing..."
+        ))
+        self.output_control.invalidate()
+
+        try:
+            result = await loop.run_in_executor(
+                None, self.engine.process, text
+            )
+            answer = await loop.run_in_executor(
+                None, self.reasoner.answer, text
+            )
+            result["_answer"] = answer
+
+            pre_c, pre_r = result.get("graph_pre_state", (0, 0))
+            self.session_additions[0] += result.get(
+                "total_concepts", 0
+            ) - pre_c
+            self.session_additions[1] += result.get(
+                "total_relations", 0
+            ) - pre_r
+
+            new_turn = Turn(text, result)
+        except Exception as e:
+            err = self._placeholder_turn_dict(text, f"Error: {e}")
+            new_turn = Turn(text, err)
+
+        # Replace placeholder with real result
+        self.store.turns[-1] = new_turn
+        self._processing = False
         self.output_control.invalidate()
         self.header_control.invalidate()
+
+    def _on_submit(self, buffer: Buffer) -> bool:
+        # Only used for commands; free text handled by async _enter
         return True
 
     def _handle_command(self, text: str):
@@ -161,7 +232,22 @@ class WorldFieldApp:
 
         elif cmd.startswith("import "):
             path = cmd[7:].strip()
-            self._handle_import(path)
+            self.store.add_turn(text, self._placeholder_turn_dict(
+                text, f"Importing {path}..."
+            ))
+            self.output_control.invalidate()
+            try:
+                from PIL import Image
+                img = Image.open(path)
+                result = self.engine.process_image(img, source=path)
+                result["_answer"] = None
+                self.store.turns[-1] = Turn(f"/import {path}", result)
+            except Exception as e:
+                self.store.turns[-1] = Turn(
+                    f"/import {path}",
+                    self._placeholder_turn_dict(text, f"Import error: {e}"),
+                )
+            self.output_control.invalidate()
 
         elif cmd == "save":
             self.engine._save_state()
@@ -195,50 +281,6 @@ class WorldFieldApp:
         else:
             self.store.add_turn(text, {
                 "text": f"Unknown command: {cmd}. Type /help for commands.",
-                "concepts_extracted": [],
-                "extracted_concepts_raw": [],
-                "extracted_relations_raw": [],
-                "graph_query": {},
-                "timings": {},
-                "total_concepts": self.engine.graph.n_concepts,
-                "total_relations": self.engine.graph.n_relations,
-                "graph_pre_state": (self.engine.graph.n_concepts, self.engine.graph.n_relations),
-            })
-
-    def _handle_input(self, text: str):
-        try:
-            result = self.engine.process(text)
-            answer = self.reasoner.answer(text)
-            result["_answer"] = answer
-            self.store.add_turn(text, result)
-            # Track session growth
-            pre_c = result.get("graph_pre_state", (0, 0))[0]
-            pre_r = result.get("graph_pre_state", (0, 0))[1]
-            self.session_additions[0] += self.engine.graph.n_concepts - pre_c
-            self.session_additions[1] += self.engine.graph.n_relations - pre_r
-        except Exception as e:
-            self.store.add_turn(text, {
-                "text": f"Error: {e}",
-                "concepts_extracted": [],
-                "extracted_concepts_raw": [],
-                "extracted_relations_raw": [],
-                "graph_query": {},
-                "timings": {},
-                "total_concepts": self.engine.graph.n_concepts,
-                "total_relations": self.engine.graph.n_relations,
-                "graph_pre_state": (self.engine.graph.n_concepts, self.engine.graph.n_relations),
-            })
-
-    def _handle_import(self, path: str):
-        try:
-            from PIL import Image
-            img = Image.open(path)
-            result = self.engine.process_image(img, source=path)
-            result["_answer"] = None
-            self.store.add_turn(f"/import {path}", result)
-        except Exception as e:
-            self.store.add_turn(f"/import {path}", {
-                "text": f"Import error: {e}",
                 "concepts_extracted": [],
                 "extracted_concepts_raw": [],
                 "extracted_relations_raw": [],
