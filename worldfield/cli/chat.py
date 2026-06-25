@@ -142,6 +142,13 @@ class Turn:
         else:
             self.sections.append(("REASONING", _render_ansi(Text("No new inferences.", style="dim white"))))
 
+        # -- LANGUAGE --
+        gen = eng.get("generated_text", "")
+        if gen:
+            t_lang = timings.get("language", 0)
+            header = f"LANGUAGE ({t_lang:.0f}ms)" if t_lang else "LANGUAGE"
+            self.sections.append((header, _render_ansi(Text(gen, style="white bold"))))
+
         # -- MEMORY --
         mem_lines = [f"Graph: {post_c} concepts, {post_r} relations"]
         if new_c > 0 or new_r > 0:

@@ -44,5 +44,9 @@ class Config:
     # Inference engine
     inference_depth: int = 3
 
+    # Language generation
+    nlg_backend: str = "template"
+    nlg_model: str = "google/flan-t5-small"
+
     # Training
     temperature: float = 0.07

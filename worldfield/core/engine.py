@@ -19,6 +19,7 @@ from .world_graph import WorldGraph
 from .activation import ActivationEngine
 from .world_state import WorldStateBuilder
 from ..reasoning.inference import InferenceEngine
+from ..nlg import Decoder
 
 class Engine:
     def __init__(self, config: Config | None = None):
@@ -53,6 +54,13 @@ class Engine:
         self.inference_engine = InferenceEngine(
             graph=self.graph,
             max_inheritance_depth=self.cfg.inference_depth,
+        )
+
+        # Language decoder (world state → natural language)
+        self.decoder = Decoder(
+            backend=self.cfg.nlg_backend,
+            model_name=self.cfg.nlg_model,
+            device=self.device,
         )
 
         # Secondary association layer
@@ -177,9 +185,18 @@ class Engine:
         # 5. Run inference over the world state
         inference_result = self.inference_engine.reason(world_state)
         timings["reasoning"] = (time.perf_counter() - t_inf) * 1000
+        t_nlg = time.perf_counter()
+
+        # 6. Generate natural-language response
+        generated = self.decoder.generate(
+            world_state=world_state.to_dict(),
+            inference_result=inference_result.to_dict(),
+            user_input=text,
+        )
+        timings["language"] = (time.perf_counter() - t_nlg) * 1000
         t2 = time.perf_counter()
 
-        # 6. Record graph state before update
+        # 7. Record graph state before update
         pre_concepts = self.graph.n_concepts
         pre_relations = self.graph.n_relations
 
@@ -225,7 +242,7 @@ class Engine:
             related_concepts = self.graph.query(query_concept, hops=1)
         timings["graph_query"] = (time.perf_counter() - t5) * 1000
 
-        # 7. Build result
+        # 8. Build result
         result = {
             "observation_id": obs_id,
             "text": text,
@@ -243,6 +260,7 @@ class Engine:
             "activation_working_set": working_set,
             "world_state": world_state.to_dict(),
             "inference_result": inference_result.to_dict(),
+            "generated_text": generated,
             "graph_query": related_concepts,
             "total_concepts": self.graph.n_concepts,
             "total_relations": self.graph.n_relations,
@@ -287,6 +305,13 @@ class Engine:
 
         inference_result = self.inference_engine.reason(ws_img)
         timings["reasoning"] = (time.perf_counter() - t_inf) * 1000
+        t_nlg = time.perf_counter()
+
+        img_generated = self.decoder.generate(
+            world_state=ws_img.to_dict(),
+            inference_result=inference_result.to_dict(),
+        )
+        timings["language"] = (time.perf_counter() - t_nlg) * 1000
 
         obs_id = self.graph.record_observation(
             text=f"[image] {source}",
@@ -310,6 +335,7 @@ class Engine:
             "activation_working_set": self.activator.get_working_set(k=10),
             "world_state": ws_img.to_dict(),
             "inference_result": inference_result.to_dict(),
+            "generated_text": img_generated,
             "slot_concepts": [name],
             "slot_state_active": self.slots.active_count() if self.slots else 0,
             "total_concepts": self.graph.n_concepts,
