@@ -126,26 +126,25 @@ class Turn:
 
         # -- PLANNING --
         plan = eng.get("plan", {})
-        if plan and plan.get("steps"):
-            plan_lines = [f"  Steps: {plan.get('n_steps', 0)}"]
-            for step in plan.get("steps", [])[:4]:
+        steps = plan.get("latest_plan") if isinstance(plan, dict) else None
+        if steps:
+            plan_lines = [f"  Plans created: {plan.get('n_plans', 1)}"]
+            for step in steps[:4]:
                 action = step.get("action", "?")
                 status = step.get("status", "pending")
                 plan_lines.append(f"    [{status}] {action}")
-            if plan.get("failed_steps", 0) > 0:
-                plan_lines.append(f"  failed: {plan['failed_steps']} step(s) — replanning")
             t_plan = timings.get("planning", 0)
             header = f"PLANNING ({t_plan:.0f}ms)" if t_plan else "PLANNING"
             self.sections.append((header, "\n".join(plan_lines)))
 
         # -- SIMULATION --
-        sim = eng.get("simulation", {})
-        if sim and sim.get("outcomes"):
+        sim_raw = eng.get("simulation", [])
+        if isinstance(sim_raw, list) and sim_raw:
             sim_lines = []
-            for outcome in sim.get("outcomes", [])[:4]:
-                action = outcome.get("action", "?")
+            for outcome in sim_raw[:4]:
+                desc = outcome.get("description", outcome.get("action", "?"))
                 prob = outcome.get("probability", 0)
-                sim_lines.append(f"  {action}  ({prob:.2f})")
+                sim_lines.append(f"  {desc}  ({prob:.2f})")
             t_sim = timings.get("simulation", 0)
             header = f"SIMULATION ({t_sim:.0f}ms)" if t_sim else "SIMULATION"
             self.sections.append((header, "\n".join(sim_lines)))
